@@ -3,12 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
-import '../widgets/filter_widgets.dart';
-import '../widgets/task_widgets.dart';
-import 'extra_work_detail_page.dart';
-import 'login_page.dart';
-import 'order_complete_page.dart';
-import 'order_detail_page.dart';
+import '../widgets/widgets.dart';
+import 'pages.dart';
 
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
@@ -31,6 +27,7 @@ class _MainPageState extends State<MainPage> {
   final GlobalKey<_TaskListViewState> _taskListKey = GlobalKey();
   final GlobalKey<_ExtraWorkListViewState> _extraWorkKey = GlobalKey();
   final GlobalKey<_HistoryListViewState> _historyKey = GlobalKey();
+  final GlobalKey<ProcessMergeViewState> _processMergeKey = GlobalKey();
 
   @override
   void initState() {
@@ -49,12 +46,15 @@ class _MainPageState extends State<MainPage> {
   void _refreshCurrentTab() {
     switch (_selectedIndex) {
       case 0:
-        _taskListKey.currentState?._refreshTasks();
+        _processMergeKey.currentState?.refreshData();
         break;
       case 1:
-        _extraWorkKey.currentState?._refreshWorks();
+        _taskListKey.currentState?._refreshTasks();
         break;
       case 2:
+        _extraWorkKey.currentState?._refreshWorks();
+        break;
+      case 3:
         _historyKey.currentState?._refreshTasks();
         break;
     }
@@ -143,6 +143,10 @@ class _MainPageState extends State<MainPage> {
             child: IndexedStack(
               index: _selectedIndex,
               children: [
+                ProcessMergeView(
+                key: _processMergeKey,
+                userInfo: widget.userInfo,
+              ),
                 TaskListView(
                   key: _taskListKey,
                   userInfo: widget.userInfo,
@@ -165,8 +169,11 @@ class _MainPageState extends State<MainPage> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
+        type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
+        unselectedItemColor: Colors.grey,
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.content_cut), label: '工序合并'),
           BottomNavigationBarItem(icon: Icon(Icons.assignment), label: '生产任务'),
           BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: '其他任务'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: '历史记录'),
@@ -788,31 +795,3 @@ class _HistoryListViewState extends State<HistoryListView> with AutomaticKeepAli
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

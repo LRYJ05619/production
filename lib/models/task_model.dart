@@ -85,8 +85,9 @@ enum ApiTaskStatus {
       case ApiTaskStatus.claimed:
         return Colors.orange;
       case ApiTaskStatus.pendingApproval:
+        return Colors.cyan;
       case ApiTaskStatus.pendingQc:
-        return Colors.amber;
+        return Colors.greenAccent;
       case ApiTaskStatus.leaderReject:
       case ApiTaskStatus.qcReject:
         return Colors.red;

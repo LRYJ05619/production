@@ -5,8 +5,8 @@ import '../models/task_model.dart';
 
 class ApiService {
   // ==================== 服务器配置 ====================
-  static String _serverIp = '192.168.1.6';
-  static int _serverPort = 8080;
+  static String _serverIp = '61.181.91.2';
+  static int _serverPort = 1680;
   static String? _token;
   static UserInfo? _currentUser;
 
@@ -61,7 +61,6 @@ class ApiService {
           'password': password,
         }),
       ).timeout(const Duration(seconds: 10));
-
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         if (json['code'] == 200) {
