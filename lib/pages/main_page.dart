@@ -128,13 +128,15 @@ class _MainPageState extends State<MainPage> {
           ],
         ),
         actions: [
-          FilterButton(hasFilter: _filter.hasFilter, onPressed: _showFilterDialog),
+          // 仅在非任务清单页显示筛选（因为任务清单已移除筛选）
+          if (_selectedIndex != 0 && _selectedIndex != 2)
+            FilterButton(hasFilter: _filter.hasFilter, onPressed: _showFilterDialog),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: '退出登录'),
         ],
       ),
       body: Column(
         children: [
-          if (_filter.hasFilter)
+          if (_filter.hasFilter && _selectedIndex != 0)
             ActiveFiltersBar(
               filter: _filter,
               onClear: () => setState(() => _filter = FilterCriteria()),
@@ -144,9 +146,9 @@ class _MainPageState extends State<MainPage> {
               index: _selectedIndex,
               children: [
                 ProcessMergeView(
-                key: _processMergeKey,
-                userInfo: widget.userInfo,
-              ),
+                  key: _processMergeKey,
+                  userInfo: widget.userInfo,
+                ),
                 TaskListView(
                   key: _taskListKey,
                   userInfo: widget.userInfo,
@@ -173,7 +175,7 @@ class _MainPageState extends State<MainPage> {
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.content_cut), label: '工序合并'),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '任务清单'),
           BottomNavigationBarItem(icon: Icon(Icons.assignment), label: '生产任务'),
           BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: '其他任务'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: '历史记录'),
