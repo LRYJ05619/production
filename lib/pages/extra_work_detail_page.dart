@@ -27,12 +27,10 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   UserRole get _role => widget.userInfo.userRole;
   ExtraWorkData get _work => widget.work;
 
-  /// 判断当前用户是否可以操作
   bool get _canOperate {
     return _work.canOperate(widget.userInfo);
   }
 
-  /// 员工是否需要填写报工表单
   bool get _needWorkerForm {
     return _work.workerId == widget.userInfo.id &&
         (_work.status == ApiTaskStatus.leaderReject ||
@@ -105,7 +103,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
           ),
           const SizedBox(width: 12),
           Expanded(
-              child: Text(_work.displayWorkNo, style: const TextStyle(fontSize: 13))),
+              child: Text(_work.displayWorkNo,
+                  style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -137,13 +136,11 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
       case UserRole.worker:
         return _buildWorkerContent();
       case UserRole.inspector:
-      // 计划外工作不需要质检，质检员看到的是只读视图
         return _buildReadOnlyContent();
       case UserRole.leader:
         if (_work.workerId == widget.userInfo.id &&
             _work.status != ApiTaskStatus.pendingApproval &&
-            _work.status != ApiTaskStatus.resubmit
-        ) {
+            _work.status != ApiTaskStatus.resubmit) {
           return _buildWorkerContent();
         }
         return _buildLeaderContent();
@@ -151,7 +148,6 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   }
 
   List<Widget> _buildWorkerContent() {
-    // 已分配状态：显示领取提示
     if (_work.status == ApiTaskStatus.assigned) {
       return [
         const SizedBox(height: 16),
@@ -169,7 +165,6 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
       ];
     }
 
-    // 已领取、班长发回状态，显示报工表单
     if (_needWorkerForm) {
       return [
         const Divider(height: 32),
@@ -202,9 +197,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   List<Widget> _buildLeaderContent() {
     final widgets = <Widget>[];
 
-    if (_work.status != ApiTaskStatus.claimed&&
-        _work.status != ApiTaskStatus.assigned
-    ) {
+    if (_work.status != ApiTaskStatus.claimed &&
+        _work.status != ApiTaskStatus.assigned) {
       widgets.addAll([
         const Divider(height: 32),
         _buildSectionTitle('员工报工'),
@@ -228,14 +222,12 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   Widget _buildBottomButtons() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 4,
-                offset: const Offset(0, -2))
-          ]),
+      decoration: BoxDecoration(color: Colors.white, boxShadow: [
+        BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2))
+      ]),
       child: SafeArea(child: _buildButtons()),
     );
   }
@@ -258,14 +250,14 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
           return _buildSingleButton('提交报工', Colors.blue, _handleReport);
         }
       }
-      return _buildTwoButtons(
-          '返工修改', Colors.red, () => _showRejectDialog(),
+      return _buildTwoButtons('返工修改', Colors.red, () => _showRejectDialog(),
           '同意提报', Colors.blue, () => _handleApprove(true));
     }
     return const SizedBox(height: 40);
   }
 
-  Widget _buildSingleButton(String text, Color color, VoidCallback onPressed) {
+  Widget _buildSingleButton(
+      String text, Color color, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -318,11 +310,11 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
 
   Future<void> _handleClaim() async {
     setState(() => _isSubmitting = true);
-    final success = await _apiService.claimTask(_work.id);
+    final result = await _apiService.claimTask(_work.id);
     setState(() => _isSubmitting = false);
     if (mounted) {
-      _showResult(success, '领取成功', '领取失败');
-      if (success) Navigator.pop(context, true);
+      _showApiResult(result, '领取成功');
+      if (result.success) Navigator.pop(context, true);
     }
   }
 
@@ -334,9 +326,9 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
     }
 
     setState(() => _isSubmitting = true);
-    final success = await _apiService.submitReport(
+    final result = await _apiService.submitReport(
       taskId: _work.id,
-      completedQty: 1, // 计划外工作完成数量固定为1
+      completedQty: 1,
       qualifiedQty: 1,
       workWasteQty: 0,
       materialWasteQty: 0,
@@ -346,19 +338,19 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
     );
     setState(() => _isSubmitting = false);
     if (mounted) {
-      _showResult(success, '报工提交成功', '提交失败');
-      if (success) Navigator.pop(context, true);
+      _showApiResult(result, '报工提交成功');
+      if (result.success) Navigator.pop(context, true);
     }
   }
 
   Future<void> _handleApprove(bool approve) async {
     setState(() => _isSubmitting = true);
-    final success = await _apiService.submitLeaderApproval(
+    final result = await _apiService.submitLeaderApproval(
         taskId: _work.id, pass: approve, note: _approvalNoteController.text);
     setState(() => _isSubmitting = false);
     if (mounted) {
-      _showResult(success, approve ? '已同意提报' : '已返工', '操作失败');
-      if (success) Navigator.pop(context, true);
+      _showApiResult(result, approve ? '已同意提报' : '已返工');
+      if (result.success) Navigator.pop(context, true);
     }
   }
 
@@ -369,24 +361,29 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
         title: const Text('返工修改'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
               _handleApprove(false);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('确认驳回', style: TextStyle(color: Colors.white)),
+            style:
+            ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('确认驳回',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  void _showResult(bool success, String successMsg, String failMsg) {
+  /// 使用ApiResult显示结果
+  void _showApiResult(ApiResult result, String successMsg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(success ? successMsg : failMsg),
-        backgroundColor: success ? Colors.green : Colors.red));
+        content:
+        Text(result.success ? successMsg : (result.errorMessage ?? '操作失败')),
+        backgroundColor: result.success ? Colors.green : Colors.red));
   }
 
   void _showError(String msg) {
@@ -428,7 +425,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
         SizedBox(
             width: 100,
             child: Text(label,
-                style: const TextStyle(fontSize: 14, color: Colors.black87))),
+                style:
+                const TextStyle(fontSize: 14, color: Colors.black87))),
         Expanded(
             child: Text(value.isEmpty ? '-' : value,
                 style: const TextStyle(fontSize: 14)))
@@ -457,8 +455,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
                     const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                         border: InputBorder.none,
-                        contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         isDense: true)))),
         const SizedBox(width: 8),
         Text(suffix)

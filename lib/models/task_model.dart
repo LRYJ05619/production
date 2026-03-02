@@ -576,6 +576,7 @@ class ApiTaskData {
   final String? _processName;
   final int? _planQty;
   final String? _workerName;
+  final String? _specModel;
 
   ApiTaskData({
     required this.id,
@@ -627,13 +628,15 @@ class ApiTaskData {
     String? processName,
     int? planQty,
     String? workerName,
+    String? specModel,
   }) : _orderNo = orderNo,
         _productCode = productCode,
         _productName = productName,
         _processCode = processCode,
         _processName = processName,
         _planQty = planQty,
-        _workerName = workerName;
+        _workerName = workerName,
+        _specModel = specModel;
 
   /// 从详情接口创建
   factory ApiTaskData.fromJson(Map<String, dynamic> json) {
@@ -729,6 +732,7 @@ class ApiTaskData {
       planQty: json['plan_qty']?.toInt(),
       assignedQty: json['assigned_qty']?.toInt(),
       workerName: json['worker_name'],
+      specModel: json['spec_model'],
     );
   }
 
@@ -739,7 +743,7 @@ class ApiTaskData {
   String get processCode => _processCode ?? plan?.processCode ?? '';
   String get processName => _processName ?? plan?.processName ?? '';
   int get planQty => _planQty ?? plan?.planQty ?? 0;
-  String get specModel => plan?.specModel ?? '';
+  String get specModel => _specModel ?? plan?.specModel ?? '';
   String get unit => plan?.unit ?? '个';
 
   // 便捷getter - 从关联用户获取
