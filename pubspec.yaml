@@ -18,6 +18,25 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
 
 flutter:
   uses-material-design: true
+
+# 应用图标
+flutter_launcher_icons:
+  android: true
+  image_path: lib/assets/images/app_icon.jpg  # 图标路径
+  adaptive_icon_background: "#FFFFFF"  # Android 适应性图标背景色
+
+# 启动页
+flutter_native_splash:
+  android: true
+  color: "#FFFFFF"
+  image: lib/assets/images/splash.png
+
+  android_12:
+    color: "#FFFFFF"
+    image: lib/assets/images/splash.png
+    icon_background_color: "#FFFFFF"

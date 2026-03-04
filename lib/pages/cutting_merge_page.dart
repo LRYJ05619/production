@@ -5,12 +5,12 @@ import 'order_detail_page.dart';
 
 /// 工序定义
 class ProcessType {
-  final String code;          // 工序代码
-  final String name;          // 工序名称
-  final String unit;          // 单位
-  final String mergeRule;     // 合并规则描述
-  final IconData icon;        // 图标
-  final Color color;          // 主题色
+  final String code;
+  final String name;
+  final String unit;
+  final String mergeRule;
+  final IconData icon;
+  final Color color;
 
   const ProcessType({
     required this.code,
@@ -20,6 +20,12 @@ class ProcessType {
     required this.icon,
     required this.color,
   });
+
+  /// 获取显示单位（仅断料工序显示"根"）
+  String getDisplayUnit(bool isCutting) {
+    if (isCutting) return '根';
+    return unit;
+  }
 
   static const List<ProcessType> all = [
     ProcessType(
@@ -48,7 +54,7 @@ class ProcessType {
     ),
     ProcessType(
       code: 'group_welding',
-      name: '成组焊接',
+      name: '组焊',
       unit: '米',
       mergeRule: '类型&材质&型号&长度&直/弧&单/双/三&间距&连接物体',
       icon: Icons.group_work,
@@ -64,34 +70,49 @@ class ProcessType {
     ),
   ];
 
+  /// 匹配工序，未知工序返回null
+  static ProcessType? tryFromCode(String code) {
+    // 先精确匹配英文code
+    for (var p in all) {
+      if (p.code == code) return p;
+    }
+    // 再匹配中文名称（API可能返回中文process_code）
+    if (code.contains('断料')) return all.firstWhere((e) => e.code == 'cutting');
+    if (code.contains('弯弧')) return all.firstWhere((e) => e.code == 'bending');
+    if (code.contains('成组') || code.contains('组焊')) return all.firstWhere((e) => e.code == 'group_welding');
+    if (code.contains('单焊') || code.contains('焊接')) return all.firstWhere((e) => e.code == 'single_welding');
+    if (code.contains('打磨')) return all.firstWhere((e) => e.code == 'grinding');
+    return null;
+  }
+
+  /// 兼容旧调用，未知工序默认返回断料
   static ProcessType fromCode(String code) {
-    return all.firstWhere(
-          (e) => e.code == code,
-      orElse: () {
-        if (code.contains('welding')) return all.firstWhere((e) => e.code == 'group_welding');
-        return all.first;
-      },
-    );
+    return tryFromCode(code) ?? all.first;
+  }
+
+  /// 是否为已知的5种合并工序
+  static bool isKnownProcess(String code) {
+    return tryFromCode(code) != null;
   }
 }
 
 /// 工序合并数据模型
 class ProcessMergeData {
   final String id;
-  final String processCode;      // 工序代码(API原始值)
-  final String processName;      // 工序名称(用于判断断料)
-  final String productType;      // 类型：预埋/外置
-  final String material;         // 材质：碳钢/不锈钢
-  final String model;            // 型号：52/34
-  final double length;           // 长度(mm)
-  final String shape;            // 直/弧
-  final String groupType;        // 单/双/三
-  final double spacing;          // 间距
-  final String connector;        // 连接物体
-  final String mergeKey;         // 合并键
-  final List<ProcessTaskItem> tasks;  // 包含的任务列表
-  final double totalQuantity;    // 合并后总数量（米，API原始值）
-  final double totalMeters;      // 合并后总米数
+  final String processCode;
+  final String processName;
+  final String productType;
+  final String material;
+  final String model;
+  final double length;           // mm
+  final String shape;
+  final String groupType;
+  final double spacing;
+  final String connector;
+  final String mergeKey;
+  final List<ProcessTaskItem> tasks;
+  final double totalQuantity;    // API原始值（米）
+  final double totalMeters;
 
   ProcessMergeData({
     required this.id,
@@ -111,10 +132,9 @@ class ProcessMergeData {
     required this.totalMeters,
   });
 
-  /// 单根长度（米）
   double get lengthMeters => length / 1000.0;
 
-  /// 是否是断料工序（兼容API返回processCode或processName）
+  /// 是否是断料工序（兼容API返回英文code或中文名称）
   bool get isCutting =>
       processCode == 'cutting' ||
           processCode.contains('断料') ||
@@ -131,7 +151,7 @@ class ProcessMergeData {
 
 /// 任务明细项
 class ProcessTaskItem {
-  final int id;               // 任务ID
+  final int id;
   final String taskNo;
   final String orderNo;
   final String erpName;
@@ -140,9 +160,9 @@ class ProcessTaskItem {
   final String groupType;
   final double spacing;
   final String connector;
-  final double quantity;       // 计划数量（API原始值，米）
-  final double processQty;    // 分配数量（API原始值，米）
-  final double length;        // 单根长度(mm)，用于转换
+  final double quantity;
+  final double processQty;    // API原始值（米）
+  final double length;        // mm
 
   ProcessTaskItem({
     required this.id,
@@ -159,10 +179,8 @@ class ProcessTaskItem {
     required this.length,
   });
 
-  /// 单根长度（米）
   double get lengthMeters => length / 1000.0;
 
-  /// 分配数量转换为根
   double get processQtyPieces {
     if (lengthMeters > 0) {
       return processQty / lengthMeters;
@@ -178,7 +196,6 @@ class ProcessTaskItem {
     return processQty;
   }
 
-  /// 从真实 API 数据构建
   factory ProcessTaskItem.fromApiTask(ApiTaskData task, Map<String, dynamic> parsedInfo) {
     return ProcessTaskItem(
       id: task.id,
@@ -197,7 +214,7 @@ class ProcessTaskItem {
   }
 }
 
-/// 工序合并视图（任务清单）
+/// 工序合并视图（任务清单）——班长可见全组、自己的置顶
 class ProcessMergeView extends StatefulWidget {
   final UserInfo userInfo;
 
@@ -212,8 +229,14 @@ class ProcessMergeView extends StatefulWidget {
 
 class ProcessMergeViewState extends State<ProcessMergeView> {
   final ApiService _apiService = ApiService();
-  List<ProcessMergeData> _processData = [];
   bool _isLoading = true;
+
+  // 按worker分组的合并数据：key=workerName, value=该worker的合并结果
+  Map<String, List<ProcessMergeData>> _workerGroupedData = {};
+  // 排序后的worker名称（班长自己在最前）
+  List<String> _sortedWorkerNames = [];
+
+  bool get _isLeader => widget.userInfo.userRole == UserRole.leader;
 
   @override
   void initState() {
@@ -225,88 +248,56 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     _loadData();
   }
 
+  /// 从API加载数据，按worker分组再按工序合并
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
     try {
-      final filter = FilterCriteria(workerId: widget.userInfo.id);
+      // 班长：不限workerId，看全组；员工：只看自己
+      final FilterCriteria filter;
+      if (_isLeader) {
+        filter = FilterCriteria(); // 班长看所有
+      } else {
+        filter = FilterCriteria(workerId: widget.userInfo.id);
+      }
+
       final response = await _apiService.getTaskList(
         page: 1,
-        pageSize: 100,
+        pageSize: 200,
         filter: filter,
       );
 
+      // 过滤出名称包含"槽道"的任务
       final List<ApiTaskData> tasks = response.data
           .where((t) => t.productName.contains('槽道'))
           .toList();
 
-      final Map<String, ProcessMergeData> groups = {};
-
+      // 第一步：按worker分组
+      final Map<String, List<ApiTaskData>> tasksByWorker = {};
       for (var task in tasks) {
-        final parsedInfo = _parseTaskInfo(task);
-
-        final String processCode = task.processCode.isNotEmpty ? task.processCode : 'unknown';
-        final String processName = task.processName;
-        final String material = parsedInfo['material'];
-        final String model = parsedInfo['model'];
-        final double length = parsedInfo['length'];
-        final String shape = parsedInfo['shape'];
-        final String productType = parsedInfo['type'];
-
-        final String key = '$processCode|$material|$model|$length|$shape|$productType';
-
-        final taskItem = ProcessTaskItem.fromApiTask(task, parsedInfo);
-
-        if (groups.containsKey(key)) {
-          groups[key]!.tasks.add(taskItem);
-        } else {
-          groups[key] = ProcessMergeData(
-            id: key,
-            processCode: processCode,
-            processName: processName,
-            productType: productType,
-            material: material,
-            model: model,
-            length: length,
-            shape: shape,
-            groupType: parsedInfo['groupType'] ?? '',
-            spacing: parsedInfo['spacing'] ?? 0.0,
-            connector: parsedInfo['connector'] ?? '',
-            mergeKey: key,
-            tasks: [taskItem],
-            totalQuantity: 0,
-            totalMeters: 0,
-          );
-        }
+        final workerName = task.workerName.isEmpty ? '未分配' : task.workerName;
+        tasksByWorker.putIfAbsent(workerName, () => []).add(task);
       }
 
-      final List<ProcessMergeData> resultList = groups.values.map((group) {
-        double totalQty = 0;
-        for (var t in group.tasks) {
-          totalQty += t.processQty;
-        }
-        return ProcessMergeData(
-          id: group.id,
-          processCode: group.processCode,
-          processName: group.processName,
-          productType: group.productType,
-          material: group.material,
-          model: group.model,
-          length: group.length,
-          shape: group.shape,
-          groupType: group.groupType,
-          spacing: group.spacing,
-          connector: group.connector,
-          mergeKey: group.mergeKey,
-          tasks: group.tasks,
-          totalQuantity: totalQty,
-          totalMeters: 0,
-        );
-      }).toList();
+      // 第二步：对每个worker的任务做工序合并
+      final Map<String, List<ProcessMergeData>> grouped = {};
+      for (var entry in tasksByWorker.entries) {
+        grouped[entry.key] = _buildMergeGroups(entry.value);
+      }
+
+      // 第三步：排序，班长自己在最前
+      final sortedNames = grouped.keys.toList();
+      final leaderName = widget.userInfo.realName;
+      sortedNames.sort((a, b) {
+        if (a == leaderName) return -1;
+        if (b == leaderName) return 1;
+        return a.compareTo(b);
+      });
 
       if (mounted) {
         setState(() {
-          _processData = resultList;
+          _workerGroupedData = grouped;
+          _sortedWorkerNames = sortedNames;
           _isLoading = false;
         });
       }
@@ -314,15 +305,87 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       debugPrint('Error loading tasks: $e');
       if (mounted) {
         setState(() {
-          _processData = [];
+          _workerGroupedData = {};
+          _sortedWorkerNames = [];
           _isLoading = false;
         });
       }
     }
   }
 
+  /// 将一组任务按工序属性合并
+  List<ProcessMergeData> _buildMergeGroups(List<ApiTaskData> tasks) {
+    final Map<String, ProcessMergeData> groups = {};
+
+    for (var task in tasks) {
+      final String processCode = task.processCode.isNotEmpty ? task.processCode : task.processName;
+
+      // 跳过非5种已知工序的任务
+      if (!ProcessType.isKnownProcess(processCode) && !ProcessType.isKnownProcess(task.processName)) continue;
+
+      final parsedInfo = _parseTaskInfo(task);
+      final String processName = task.processName;
+      final String material = parsedInfo['material'];
+      final String model = parsedInfo['model'];
+      final double length = parsedInfo['length'];
+      final String shape = parsedInfo['shape'];
+      final String productType = parsedInfo['type'];
+
+      final String key = '$processCode|$material|$model|$length|$shape|$productType';
+
+      final taskItem = ProcessTaskItem.fromApiTask(task, parsedInfo);
+
+      if (groups.containsKey(key)) {
+        groups[key]!.tasks.add(taskItem);
+      } else {
+        groups[key] = ProcessMergeData(
+          id: key,
+          processCode: processCode,
+          processName: processName,
+          productType: productType,
+          material: material,
+          model: model,
+          length: length,
+          shape: shape,
+          groupType: parsedInfo['groupType'] ?? '',
+          spacing: parsedInfo['spacing'] ?? 0.0,
+          connector: parsedInfo['connector'] ?? '',
+          mergeKey: key,
+          tasks: [taskItem],
+          totalQuantity: 0,
+          totalMeters: 0,
+        );
+      }
+    }
+
+    // 计算总数
+    return groups.values.map((group) {
+      double totalQty = 0;
+      for (var t in group.tasks) {
+        totalQty += t.processQty;
+      }
+      return ProcessMergeData(
+        id: group.id,
+        processCode: group.processCode,
+        processName: group.processName,
+        productType: group.productType,
+        material: group.material,
+        model: group.model,
+        length: group.length,
+        shape: group.shape,
+        groupType: group.groupType,
+        spacing: group.spacing,
+        connector: group.connector,
+        mergeKey: group.mergeKey,
+        tasks: group.tasks,
+        totalQuantity: totalQty,
+        totalMeters: 0,
+      );
+    }).toList();
+  }
+
   /// 解析任务规格字符串
-  /// 示例输入: "FPH 53/34-1900-Z（150）" 或 "FPH 52/34-3000-R6670"
+  /// 示例: "FPH 53/34-1900-Z（150）" 或 "FPH 52/34-3000-R6670"
   Map<String, dynamic> _parseTaskInfo(ApiTaskData task) {
     String spec = task.specModel;
     String name = task.productName;
@@ -330,24 +393,20 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     String material = '碳钢';
     String model = '';
     double length = 0;
-    String shape = 'Z'; // 默认直形
+    String shape = 'Z';
     String type = '预埋';
 
-    // 1. 判断类型
     if (name.contains('外置')) type = '外置';
 
-    // 2. 判断材质
     if (name.contains('不锈钢') || spec.toUpperCase().contains('304') || spec.toUpperCase().contains('316')) {
       material = '不锈钢';
     }
 
-    // 3. 解析规格字符串
-    // 先统一替换中文括号为英文括号
+    // 统一中文括号为英文括号
     String normalizedSpec = spec
         .replaceAll('（', '(')
         .replaceAll('）', ')');
 
-    // 按 '-' 分割，例如 "FPH 53/34-1900-Z(150)" → ["FPH 53/34", "1900", "Z(150)"]
     List<String> parts = normalizedSpec.split('-');
 
     // 提取型号（xx/xx 格式）
@@ -363,27 +422,26 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       }
     }
 
-    // 提取长度（第二段，纯数字部分，单位mm）
+    // 提取长度(mm)
     if (parts.length > 1) {
       String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
       length = double.tryParse(lenStr) ?? 0;
     }
 
-    // 提取形状（第三段开头字母，去掉括号内容）
+    // 提取形状
     if (parts.length > 2) {
-      // 去掉括号及其内容，例如 "Z(150)" → "Z", "R6670" → "R6670"
       String shapePart = parts[2].replaceAll(RegExp(r'[（(].*?[）)]'), '').trim().toUpperCase();
       if (shapePart.startsWith('R')) {
-        shape = 'R'; // 弧形
+        shape = 'R';
       } else {
-        shape = 'Z'; // 直形（包括Z开头和其他情况）
+        shape = 'Z';
       }
     }
 
     return {
       'material': material,
       'model': model,
-      'length': length,  // 单位mm
+      'length': length,
       'shape': shape,
       'type': type,
       'groupType': '',
@@ -392,40 +450,109 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     };
   }
 
+  // ==================== UI ====================
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_processData.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox, size: 60, color: Colors.grey.shade300),
-            const SizedBox(height: 12),
-            const Text('暂无槽道任务数据', style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-                onPressed: _loadData,
-                icon: const Icon(Icons.refresh),
-                label: const Text('刷新')),
-          ],
-        ),
-      );
+    // 检查是否有数据
+    final bool isEmpty = _workerGroupedData.isEmpty ||
+        _workerGroupedData.values.every((list) => list.isEmpty);
+
+    if (isEmpty) {
+      return _buildEmptyView();
+    }
+
+    // 构建分组列表
+    final List<Widget> items = [];
+
+    for (final workerName in _sortedWorkerNames) {
+      final mergeGroups = _workerGroupedData[workerName]!;
+      if (mergeGroups.isEmpty) continue;
+
+      final bool isMe = workerName == widget.userInfo.realName;
+
+      // 计算该worker的总任务数
+      int taskCount = 0;
+      for (var g in mergeGroups) {
+        taskCount += g.tasks.length;
+      }
+
+      // 如果是班长视图(有多人)，显示worker分组头
+      if (_isLeader || _sortedWorkerNames.length > 1) {
+        items.add(_buildWorkerHeader(workerName, taskCount, isMe: isMe));
+      }
+
+      // 该worker的合并卡片
+      for (final data in mergeGroups) {
+        final process = ProcessType.fromCode(data.processName);
+        items.add(_buildMergeCard(data, process));
+      }
     }
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(12),
-        itemCount: _processData.length,
-        itemBuilder: (context, index) {
-          final data = _processData[index];
-          final process = ProcessType.fromCode(data.processCode);
-          return _buildMergeCard(data, process);
-        },
+        children: items,
+      ),
+    );
+  }
+
+  Widget _buildEmptyView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox, size: 60, color: Colors.grey.shade300),
+          const SizedBox(height: 12),
+          const Text('暂无槽道任务数据', style: TextStyle(color: Colors.grey)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('刷新')),
+        ],
+      ),
+    );
+  }
+
+  /// worker分组头（类似生产任务的分组头，班长自己高亮）
+  Widget _buildWorkerHeader(String workerName, int taskCount, {bool isMe = false}) {
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isMe ? Colors.orange.shade50 : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: isMe ? Border.all(color: Colors.orange.shade200) : null,
+      ),
+      child: Row(
+        children: [
+          Icon(isMe ? Icons.star : Icons.person, size: 18,
+              color: isMe ? Colors.orange : Colors.grey),
+          const SizedBox(width: 8),
+          Text(
+            isMe ? '$workerName（我）' : workerName,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: isMe ? Colors.orange.shade800 : null,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: isMe ? Colors.orange : Colors.grey,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text('$taskCount', style: const TextStyle(color: Colors.white, fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
@@ -436,9 +563,8 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     final String shapeText = isArc ? '弧形' : '直形';
     final Color shapeColor = isArc ? Colors.cyan : Colors.teal;
 
-    // 使用转换后的根数显示（仅断料工序转换）
     final bool isCutting = data.isCutting;
-    final String displayUnit = isCutting ? '根' : process.unit;
+    final String displayUnit = process.getDisplayUnit(isCutting);
     final int displayTotalQty = isCutting ? data.totalPieces.round() : data.totalQuantity.toInt();
 
     return Card(
@@ -540,8 +666,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   }
 
   Widget _buildTaskItem(ProcessTaskItem task, ProcessType process, bool isCutting) {
-    // 仅断料工序转换为根
-    final String displayUnit = isCutting ? '根' : process.unit;
+    final String displayUnit = process.getDisplayUnit(isCutting);
     final int displayQty = task.getDisplayQty(isCutting).round();
 
     return Material(
@@ -609,7 +734,6 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
           builder: (context) => OrderDetailPage(task: taskDetail, userInfo: widget.userInfo),
         ),
       );
-      // 提交成功后刷新列表
       if (result == true) {
         _loadData();
       }

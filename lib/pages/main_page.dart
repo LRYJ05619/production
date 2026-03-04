@@ -23,7 +23,6 @@ class _MainPageState extends State<MainPage> {
   FilterCriteria _filter = FilterCriteria();
   Timer? _refreshTimer;
 
-  // 用于触发子组件刷新的key
   final GlobalKey<_TaskListViewState> _taskListKey = GlobalKey();
   final GlobalKey<_ExtraWorkListViewState> _extraWorkKey = GlobalKey();
   final GlobalKey<_HistoryListViewState> _historyKey = GlobalKey();
@@ -128,7 +127,6 @@ class _MainPageState extends State<MainPage> {
           ],
         ),
         actions: [
-          // 仅在非任务清单页显示筛选（因为任务清单已移除筛选）
           if (_selectedIndex != 0 && _selectedIndex != 2)
             FilterButton(hasFilter: _filter.hasFilter, onPressed: _showFilterDialog),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: '退出登录'),
@@ -185,7 +183,7 @@ class _MainPageState extends State<MainPage> {
   }
 }
 
-// ==================== 生产任务列表视图（按执行人分组） ====================
+// ==================== 生产任务列表视图（按执行人分组，班长自己置顶） ====================
 class TaskListView extends StatefulWidget {
   final UserInfo userInfo;
   final FilterCriteria filter;
@@ -210,6 +208,8 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
   bool _isLoadingMore = false;
   bool _hasMore = true;
   int _currentPage = 1;
+
+  bool get _isLeader => widget.userInfo.userRole == UserRole.leader;
 
   @override
   bool get wantKeepAlive => true;
@@ -255,6 +255,20 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
       final workerName = task.workerName.isEmpty ? '未分配' : task.workerName;
       _groupedTasks.putIfAbsent(workerName, () => []).add(task);
     }
+  }
+
+  /// 获取排序后的worker名称列表，班长自己的置顶
+  List<String> _getSortedWorkerNames() {
+    final workerNames = _groupedTasks.keys.toList();
+    if (_isLeader) {
+      final leaderName = widget.userInfo.realName;
+      workerNames.sort((a, b) {
+        if (a == leaderName) return -1;
+        if (b == leaderName) return 1;
+        return a.compareTo(b);
+      });
+    }
+    return workerNames;
   }
 
   Future<void> _loadTasks() async {
@@ -314,18 +328,17 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
       return _buildEmptyView();
     }
 
-    // 构建分组列表
+    // 构建分组列表，班长自己的任务置顶
     final List<Widget> items = [];
-    final workerNames = _groupedTasks.keys.toList();
+    final workerNames = _getSortedWorkerNames();
 
     for (int i = 0; i < workerNames.length; i++) {
       final workerName = workerNames[i];
       final tasks = _groupedTasks[workerName]!;
+      final bool isMe = _isLeader && workerName == widget.userInfo.realName;
 
-      // 分组标题
-      items.add(_buildGroupHeader(workerName, tasks.length));
+      items.add(_buildGroupHeader(workerName, tasks.length, isMe: isMe));
 
-      // 该分组下的任务卡片
       for (final task in tasks) {
         items.add(TaskCard(task: task, onTap: () => _navigateToDetail(task)));
       }
@@ -346,19 +359,26 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
     );
   }
 
-  Widget _buildGroupHeader(String workerName, int count) {
+  Widget _buildGroupHeader(String workerName, int count, {bool isMe = false}) {
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: isMe ? Colors.orange.shade50 : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(8),
+        border: isMe ? Border.all(color: Colors.orange.shade200) : null,
       ),
       child: Row(
         children: [
-          const Icon(Icons.person, size: 18, color: Colors.grey),
+          Icon(isMe ? Icons.star : Icons.person, size: 18,
+              color: isMe ? Colors.orange : Colors.grey),
           const SizedBox(width: 8),
-          Text(workerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(isMe ? '$workerName（我）' : workerName,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: isMe ? Colors.orange.shade800 : null,
+              )),
           const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -525,7 +545,6 @@ class _ExtraWorkListViewState extends State<ExtraWorkListView> with AutomaticKee
       return _buildEmptyView();
     }
 
-    // 构建分组列表
     final List<Widget> items = [];
     final workerNames = _groupedWorks.keys.toList();
 
@@ -533,10 +552,8 @@ class _ExtraWorkListViewState extends State<ExtraWorkListView> with AutomaticKee
       final workerName = workerNames[i];
       final works = _groupedWorks[workerName]!;
 
-      // 分组标题
       items.add(_buildGroupHeader(workerName, works.length));
 
-      // 该分组下的任务卡片
       for (final work in works) {
         items.add(ExtraWorkCard(work: work, onTap: () => _navigateToDetail(work)));
       }
