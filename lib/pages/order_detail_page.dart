@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 import '../services/api_service.dart';
+import '../widgets/app_toast.dart';
 
 class OrderDetailPage extends StatefulWidget {
   final ApiTaskData task;
@@ -623,15 +624,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
   /// 使用ApiResult显示结果，失败时显示服务器返回的具体错误信息
   void _showApiResult(ApiResult result, String successMsg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-        Text(result.success ? successMsg : (result.errorMessage ?? '操作失败')),
-        backgroundColor: result.success ? Colors.green : Colors.red));
+    AppToast.fromResult(context, result, successMsg);
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red));
+    AppToast.error(context, msg);
   }
 
   Widget _buildSectionTitle(String title, {Color color = Colors.orange}) {

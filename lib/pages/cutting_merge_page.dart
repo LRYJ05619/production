@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 import '../services/api_service.dart';
+import '../widgets/app_toast.dart';
 import 'order_detail_page.dart';
 
 /// 工序定义
@@ -642,7 +643,6 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   }
 
   Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
-    final bool isGroupWelding = process.code == 'group_welding';
     final bool isArc = data.shape.startsWith('R');
     final String shapeText = isArc ? '弧形 ${data.shape}' : '直形';
     final Color shapeColor = isArc ? Colors.cyan : Colors.teal;
@@ -699,14 +699,18 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 第二行：长度 + 形状 + 成组信息
+                // 第二行：属性标签（根据mergeRule展示）
+                // 所有工序：长度
+                // 弯弧/单焊/打磨/成组焊接额外：直/弧
+                // 成组焊接额外：单/双/三 + 间距
                 Wrap(
                   spacing: 6,
                   runSpacing: 4,
                   children: [
                     _buildTag('${data.length.toInt()}mm', Colors.blueGrey),
-                    _buildTag(shapeText, shapeColor),
-                    if (isGroupWelding && data.groupType.isNotEmpty)
+                    if (process.mergeRule.contains('直/弧'))
+                      _buildTag(shapeText, shapeColor),
+                    if (process.mergeRule.contains('单/双/三') && data.groupType.isNotEmpty)
                       _buildTag('${data.groupType} 间距${data.spacing.toInt()}', Colors.purple),
                   ],
                 ),
@@ -759,8 +763,8 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         onTap: () => _navigateToTaskDetail(task.id),
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
             borderRadius: BorderRadius.circular(8),
@@ -776,21 +780,21 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
                     // 产品名称
                     Text(
                       task.erpName,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey[800]),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[800]),
                     ),
                     const SizedBox(height: 3),
                     // 规格
                     Text(
                       task.erpModel,
-                      style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
               // 右侧：数量 + 箭头
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: process.color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(6),
@@ -804,7 +808,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
                   ),
                 ),
               ),
-              const SizedBox(width: 2),
+              const SizedBox(width: 4),
               Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
             ],
           ),
@@ -829,9 +833,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         _loadData();
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('获取任务详情失败'), backgroundColor: Colors.red),
-      );
+      AppToast.error(context, '获取任务详情失败');
     }
   }
 }

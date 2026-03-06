@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
@@ -246,6 +247,16 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
     if (widget.userInfo.userRole == UserRole.worker) {
       filter = filter.copyWith(workerId: widget.userInfo.id);
     }
+    // 默认筛选当天任务
+    if (filter.startTime == null && filter.endTime == null) {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final todayEnd = todayStart.add(const Duration(days: 1));
+      filter = filter.copyWith(
+        startTime: todayStart.toIso8601String(),
+        endTime: todayEnd.toIso8601String(),
+      );
+    }
     return filter;
   }
 
@@ -429,7 +440,7 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
         _refreshTasks();
       }
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('获取任务详情失败'), backgroundColor: Colors.red));
+      AppToast.error(context, '获取任务详情失败');
     }
   }
 }
@@ -637,7 +648,7 @@ class _ExtraWorkListViewState extends State<ExtraWorkListView> with AutomaticKee
         _refreshWorks();
       }
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('获取详情失败'), backgroundColor: Colors.red));
+      AppToast.error(context, '获取详情失败');
     }
   }
 }
