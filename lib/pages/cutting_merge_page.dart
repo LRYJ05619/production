@@ -80,7 +80,7 @@ class ProcessType {
     if (code.contains('断料')) return all.firstWhere((e) => e.code == 'cutting');
     if (code.contains('弯弧')) return all.firstWhere((e) => e.code == 'bending');
     if (code.contains('成组') || code.contains('组焊')) return all.firstWhere((e) => e.code == 'group_welding');
-    if (code.contains('单焊') || code.contains('焊接')) return all.firstWhere((e) => e.code == 'single_welding');
+    if (code.contains('单焊')) return all.firstWhere((e) => e.code == 'single_welding');
     if (code.contains('打磨')) return all.firstWhere((e) => e.code == 'grinding');
     return null;
   }
@@ -134,11 +134,11 @@ class ProcessMergeData {
 
   double get lengthMeters => length / 1000.0;
 
-  /// 是否是断料工序（兼容API返回英文code或中文名称）
+  /// 是否是断料工序（优先使用processName匹配）
   bool get isCutting =>
-      processCode == 'cutting' ||
+      processName.contains('断料') ||
           processCode.contains('断料') ||
-          processName.contains('断料');
+          processCode == 'cutting';
 
   /// 总数量转换为根（仅断料工序）
   double get totalPieces {
@@ -254,11 +254,23 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
     try {
       // 班长：不限workerId，看全组；员工：只看自己
+      // 默认筛选当天任务
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final todayEnd = todayStart.add(const Duration(days: 1));
+
       final FilterCriteria filter;
       if (_isLeader) {
-        filter = FilterCriteria(); // 班长看所有
+        filter = FilterCriteria(
+          startTime: todayStart.toIso8601String(),
+          endTime: todayEnd.toIso8601String(),
+        );
       } else {
-        filter = FilterCriteria(workerId: widget.userInfo.id);
+        filter = FilterCriteria(
+          workerId: widget.userInfo.id,
+          startTime: todayStart.toIso8601String(),
+          endTime: todayEnd.toIso8601String(),
+        );
       }
 
       final response = await _apiService.getTaskList(
@@ -318,20 +330,38 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     final Map<String, ProcessMergeData> groups = {};
 
     for (var task in tasks) {
-      final String processCode = task.processCode.isNotEmpty ? task.processCode : task.processName;
+      final String processName = task.processName.isNotEmpty ? task.processName : task.processCode;
 
-      // 跳过非5种已知工序的任务
-      if (!ProcessType.isKnownProcess(processCode) && !ProcessType.isKnownProcess(task.processName)) continue;
+      // 匹配为已知工序，跳过未知工序
+      final ProcessType? processType = ProcessType.tryFromCode(processName);
+      if (processType == null) continue;
+
+      // 使用标准化的英文code作为key的工序部分，避免中文变体导致无法合并
+      final String normalizedProcess = processType.code;
 
       final parsedInfo = _parseTaskInfo(task);
-      final String processName = task.processName;
+      final String specType = parsedInfo['specType'] ?? '';
       final String material = parsedInfo['material'];
-      final String model = parsedInfo['model'];
       final double length = parsedInfo['length'];
       final String shape = parsedInfo['shape'];
-      final String productType = parsedInfo['type'];
+      final String groupType = parsedInfo['groupType'] ?? '';
+      final double spacing = parsedInfo['spacing'] ?? 0.0;
+      final String connector = parsedInfo['connector'] ?? '';
 
-      final String key = '$processCode|$material|$model|$length|$shape|$productType';
+      // 按mergeRule动态构建合并key
+      final String key = _buildMergeKey(normalizedProcess, processType, {
+        'specType': specType,
+        'material': material,
+        'length': length,
+        'shape': shape,
+        'groupType': groupType,
+        'spacing': spacing,
+        'connector': connector,
+      });
+
+      debugPrint('[合并] 任务${task.taskNo}: processName=$processName → $normalizedProcess, '
+          'specType=$specType, length=$length, shape=$shape, groupType=$groupType, '
+          'spec=${task.specModel} → key=$key');
 
       final taskItem = ProcessTaskItem.fromApiTask(task, parsedInfo);
 
@@ -340,16 +370,16 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       } else {
         groups[key] = ProcessMergeData(
           id: key,
-          processCode: processCode,
-          processName: processName,
-          productType: productType,
+          processCode: normalizedProcess,
+          processName: processType.name,
+          productType: specType,
           material: material,
-          model: model,
+          model: specType,
           length: length,
           shape: shape,
-          groupType: parsedInfo['groupType'] ?? '',
-          spacing: parsedInfo['spacing'] ?? 0.0,
-          connector: parsedInfo['connector'] ?? '',
+          groupType: groupType,
+          spacing: spacing,
+          connector: connector,
           mergeKey: key,
           tasks: [taskItem],
           totalQuantity: 0,
@@ -384,68 +414,122 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     }).toList();
   }
 
+  /// 根据工序的mergeRule动态构建合并key
+  /// 类型&型号 = specType（如"FPH 52/34"，整体不可拆分）
+  /// 断料: 类型&材质&型号&长度
+  /// 弯弧/单焊/打磨: 类型&材质&型号&长度&直/弧
+  /// 成组焊接: 类型&材质&型号&长度&直/弧&单/双/三&间距&连接物体
+  String _buildMergeKey(String processCode, ProcessType processType, Map<String, dynamic> info) {
+    final parts = <String>[processCode];
+
+    // 所有工序共有：类型(含型号)&材质&长度
+    parts.add(info['specType'] as String);
+    parts.add(info['material'] as String);
+    parts.add((info['length'] as double).toString());
+
+    // 弯弧/单焊/打磨/成组焊接额外需要：直/弧
+    if (processType.mergeRule.contains('直/弧')) {
+      parts.add(info['shape'] as String);
+    }
+
+    // 成组焊接额外需要：单/双/三&间距&连接物体
+    if (processType.mergeRule.contains('单/双/三')) {
+      parts.add(info['groupType'] as String);
+      parts.add((info['spacing'] as double).toString());
+      parts.add(info['connector'] as String);
+    }
+
+    return parts.join('|');
+  }
+
   /// 解析任务规格字符串
-  /// 示例: "FPH 53/34-1900-Z（150）" 或 "FPH 52/34-3000-R6670"
+  /// 规则：
+  ///   FPH 52/34  - 第一部分：类型，52/34为型号
+  ///   2500       - 第二部分：长度(mm)
+  ///   Z 或 R6500 - 第三部分：Z=直形，R+数字=弧形（数字为弧度半径）
+  ///   (150)      - 括号中：成组间距，一个数字=双根，两个数字(150-150)=三根
+  ///   A4         - 末尾有A4=不锈钢，无则碳钢
+  /// 示例:
+  ///   "FPH 52/34-2500-Z （150-150）"  → 52/34, 2500mm, 直形, 三根间距150
+  ///   "FPH 53/34-1900-R6670"          → 53/34, 1900mm, 弧形R6670
+  ///   "FPH 52/34-2500-Z-A4"           → 52/34, 2500mm, 直形, 不锈钢
   Map<String, dynamic> _parseTaskInfo(ApiTaskData task) {
     String spec = task.specModel;
     String name = task.productName;
 
     String material = '碳钢';
-    String model = '';
     double length = 0;
     String shape = 'Z';
-    String type = '预埋';
+    String specType = '';   // 类型&型号整体，如 "FPH 52/34"
+    String groupType = '';
+    double spacing = 0;
 
-    if (name.contains('外置')) type = '外置';
-
-    if (name.contains('不锈钢') || spec.toUpperCase().contains('304') || spec.toUpperCase().contains('316')) {
-      material = '不锈钢';
-    }
-
-    // 统一中文括号为英文括号
+    // 1. 统一中文括号为英文括号
     String normalizedSpec = spec
         .replaceAll('（', '(')
         .replaceAll('）', ')');
 
-    List<String> parts = normalizedSpec.split('-');
-
-    // 提取型号（xx/xx 格式）
-    if (parts.isNotEmpty) {
-      String part0 = parts[0];
-      RegExp modelReg = RegExp(r'(\d+/\d+)');
-      Match? match = modelReg.firstMatch(part0);
-      if (match != null) {
-        model = match.group(1) ?? '';
-      } else {
-        List<String> subParts = part0.trim().split(' ');
-        model = subParts.last;
+    // 2. 先提取括号中的间距信息（成组槽道）
+    final bracketMatch = RegExp(r'\(([^)]+)\)').firstMatch(normalizedSpec);
+    if (bracketMatch != null) {
+      String bracketContent = bracketMatch.group(1) ?? '';
+      List<String> spacings = bracketContent.split('-');
+      if (spacings.length >= 2) {
+        // 两个数字 = 三根成组
+        groupType = '三根';
+        spacing = double.tryParse(spacings[0].trim()) ?? 0;
+      } else if (spacings.length == 1 && spacings[0].trim().isNotEmpty) {
+        // 一个数字 = 双根成组
+        groupType = '双根';
+        spacing = double.tryParse(spacings[0].trim()) ?? 0;
       }
     }
 
-    // 提取长度(mm)
+    // 3. 去掉括号部分，再按 - 分割（避免括号内的-干扰分割）
+    String specWithoutBrackets = normalizedSpec
+        .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+        .trim();
+
+    // 4. 检测A4（不锈钢）
+    if (specWithoutBrackets.toUpperCase().contains('A4')) {
+      material = '不锈钢';
+    }
+
+    List<String> parts = specWithoutBrackets.split('-');
+
+    // 5. 第一部分：类型&型号整体（如 "FPH 52/34"，不可拆分）
+    if (parts.isNotEmpty) {
+      specType = parts[0].trim();
+    }
+
+    // 6. 第二部分：长度(mm)
     if (parts.length > 1) {
       String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
       length = double.tryParse(lenStr) ?? 0;
     }
 
-    // 提取形状
+    // 7. 第三部分：形状 Z=直形，R+数字=弧形（整体如"R6100"参与合并）
     if (parts.length > 2) {
-      String shapePart = parts[2].replaceAll(RegExp(r'[（(].*?[）)]'), '').trim().toUpperCase();
+      String shapePart = parts[2].trim().toUpperCase();
+      // 去掉A4后缀（不锈钢标记可能跟在形状后）
+      shapePart = shapePart.replaceAll(RegExp(r'\s*A4$'), '');
       if (shapePart.startsWith('R')) {
-        shape = 'R';
+        shape = shapePart;  // 保留完整值如 "R6100"
       } else {
         shape = 'Z';
       }
     }
 
+    debugPrint('[解析] spec="$spec" → specType=$specType, length=$length, shape=$shape, '
+        'material=$material, group=$groupType, spacing=$spacing');
+
     return {
+      'specType': specType,
       'material': material,
-      'model': model,
       'length': length,
       'shape': shape,
-      'type': type,
-      'groupType': '',
-      'spacing': 0.0,
+      'groupType': groupType,
+      'spacing': spacing,
       'connector': '',
     };
   }
@@ -559,13 +643,14 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
   Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
     final bool isGroupWelding = process.code == 'group_welding';
-    final bool isArc = data.shape == 'R';
-    final String shapeText = isArc ? '弧形' : '直形';
+    final bool isArc = data.shape.startsWith('R');
+    final String shapeText = isArc ? '弧形 ${data.shape}' : '直形';
     final Color shapeColor = isArc ? Colors.cyan : Colors.teal;
 
     final bool isCutting = data.isCutting;
     final String displayUnit = process.getDisplayUnit(isCutting);
     final int displayTotalQty = isCutting ? data.totalPieces.round() : data.totalQuantity.toInt();
+    final int taskCount = data.tasks.length;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -576,6 +661,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          // 左侧工序图标框
           leading: Container(
             width: 48,
             height: 48,
@@ -591,54 +677,52 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
                 const SizedBox(height: 2),
                 Text(
                   process.name.length > 2 ? process.name.substring(0, 2) : process.name,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: process.color,
-                  ),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: process.color),
                 ),
               ],
             ),
           ),
-          title: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          // 第一行：型号 + 材质标签
+          title: Row(
             children: [
               Text(
-                '${data.material} ${data.model} ${data.length.toInt()}mm',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                data.model,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
-              _buildTag(shapeText, shapeColor),
+              const SizedBox(width: 8),
+              _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
             ],
           ),
+          // 第二行 + 第三行
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTag(data.productType, Colors.purple),
-                if (isGroupWelding && data.groupType.isNotEmpty)
-                  _buildTag('${data.groupType}根', Colors.indigo),
-                const SizedBox(width: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('合计: ', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                      Text(
-                          '$displayTotalQty',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue[800])),
-                      Text(displayUnit, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                    ],
-                  ),
+                // 第二行：长度 + 形状 + 成组信息
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _buildTag('${data.length.toInt()}mm', Colors.blueGrey),
+                    _buildTag(shapeText, shapeColor),
+                    if (isGroupWelding && data.groupType.isNotEmpty)
+                      _buildTag('${data.groupType} 间距${data.spacing.toInt()}', Colors.purple),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // 第三行：合计数量 + 任务数
+                Row(
+                  children: [
+                    Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    Text(
+                      '$displayTotalQty',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                    ),
+                    Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    const SizedBox(width: 10),
+                    Text('$taskCount个任务', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+                  ],
                 ),
               ],
             ),
@@ -673,48 +757,55 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _navigateToTaskDetail(task.id),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.all(10),
+          margin: const EdgeInsets.only(bottom: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.grey.shade200),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                            task.taskNo,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_ios, size: 10, color: Colors.blue),
-                      ],
+              // 左侧：任务信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 产品名称
+                    Text(
+                      task.erpName,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey[800]),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: process.color.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(3),
+                    const SizedBox(height: 3),
+                    // 规格
+                    Text(
+                      task.erpModel,
+                      style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                     ),
-                    child: Text(
-                      '$displayQty $displayUnit',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: process.color),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(task.erpName, style: TextStyle(fontSize: 11, color: Colors.grey[800])),
-              const SizedBox(height: 2),
-              Text(task.erpModel, style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+              const SizedBox(width: 4),
+              // 右侧：数量 + 箭头
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: process.color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$displayQty $displayUnit',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: process.color,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
             ],
           ),
         ),

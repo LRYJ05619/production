@@ -166,6 +166,14 @@ class ApiService {
           queryParams['team_id'] = filter.teamId.toString();
       }
 
+      // 默认筛选当天任务（未手动指定时间范围时）
+      if (!queryParams.containsKey('start_time')) {
+        final today = DateTime.now();
+        final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+        queryParams['start_time'] = '$dateStr 00:00:00';
+        queryParams['end_time'] = '$dateStr 23:59:59';
+      }
+
       final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks')
           .replace(queryParameters: queryParams);
       final response = await _client
@@ -363,6 +371,14 @@ class ApiService {
         if (filter.endTime != null) queryParams['end_time'] = filter.endTime!;
         if (filter.teamId != null)
           queryParams['team_id'] = filter.teamId.toString();
+      }
+
+      // 默认筛选当天任务（未手动指定时间范围时）
+      if (!queryParams.containsKey('start_time')) {
+        final today = DateTime.now();
+        final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+        queryParams['start_time'] = '$dateStr 00:00:00';
+        queryParams['end_time'] = '$dateStr 23:59:59';
       }
 
       final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks')
