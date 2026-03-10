@@ -192,6 +192,7 @@ class PlanInfo {
   final DateTime? planEndTime;
   final double assignedQty;
   final double completedQty;
+  final double totalWasteQty;
   final double progress;
   final double transferInQty;
   final bool isFirstOper;
