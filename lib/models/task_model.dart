@@ -215,6 +215,7 @@ class PlanInfo {
     this.planEndTime,
     required this.assignedQty,
     required this.completedQty,
+    required this.totalWasteQty,
     required this.progress,
     required this.transferInQty,
     required this.isFirstOper,
@@ -244,6 +245,7 @@ class PlanInfo {
           : null,
       assignedQty: (json['assigned_qty'] ?? 0).toDouble(),
       completedQty: (json['completed_qty'] ?? 0).toDouble(),
+      totalWasteQty: (json['total_waste_qty'] ?? 0).toDouble(),
       progress: (json['progress'] ?? 0).toDouble(),
       transferInQty: (json['transfer_in_qty'] ?? 0).toDouble(),
       isFirstOper: json['is_first_oper'] ?? false,
@@ -481,7 +483,6 @@ class ExtraWorkData {
   String get statusText => status.text;
   Color get statusColor => status.color;
 
-  /// 判断指定用户是否可以操作此任务
   /// 判断指定用户是否可以操作此任务
   bool canOperate(UserInfo user) {
     switch (user.userRole) {

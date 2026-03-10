@@ -232,6 +232,9 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   final ApiService _apiService = ApiService();
   bool _isLoading = true;
 
+  // ===== Mock开关：测试完成后改为false =====
+  static const bool _useMock = false;
+
   // 按worker分组的合并数据：key=workerName, value=该worker的合并结果
   Map<String, List<ProcessMergeData>> _workerGroupedData = {};
   // 排序后的worker名称（班长自己在最前）
@@ -249,11 +252,219 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     _loadData();
   }
 
+  // ===== Mock数据：验证成组焊接合并 =====
+  Map<String, List<ProcessMergeData>> _buildMockData() {
+    // 8条mock任务，按合并规则应分为6组
+    final mockTasks = <Map<String, dynamic>>[
+      // #1 A组：碳钢 52/34 2500 Z 双根 间距150
+      {'id': 9001, 'name': '直形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-2500-Z (150)',
+        'process': '成组焊接', 'qty': 100, 'worker': '张三'},
+      // #2 A组：同上（外置不影响合并）
+      {'id': 9002, 'name': '直形燕尾双根成组外置槽道', 'spec': 'FPH 52/34-2500-Z (150)',
+        'process': '成组焊接', 'qty': 80, 'worker': '张三'},
+      // #3 B组：三根≠双根
+      {'id': 9003, 'name': '直形燕尾三根成组预埋槽道', 'spec': 'FPH 52/34-2500-Z (150-150)',
+        'process': '成组焊接', 'qty': 60, 'worker': '张三'},
+      // #4 C组：间距200≠150
+      {'id': 9004, 'name': '直形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-2500-Z (200)',
+        'process': '成组焊接', 'qty': 90, 'worker': '张三'},
+      // #5 D组：弧形R6100≠直形
+      {'id': 9005, 'name': '弧形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-2500-R6100 (150)',
+        'process': '成组焊接', 'qty': 70, 'worker': '李四'},
+      // #6 E组：长度3000≠2500
+      {'id': 9006, 'name': '直形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-3000-Z (150)',
+        'process': '成组焊接', 'qty': 50, 'worker': '李四'},
+      // #7 F组：不锈钢≠碳钢
+      {'id': 9007, 'name': '直形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-2500-Z (150) A4',
+        'process': '成组焊接', 'qty': 110, 'worker': '李四'},
+      // #8 D组：和#5合并
+      {'id': 9008, 'name': '弧形燕尾双根成组预埋槽道', 'spec': 'FPH 52/34-2500-R6100 (150)',
+        'process': '成组焊接', 'qty': 40, 'worker': '李四'},
+    ];
+
+    // 按worker分组
+    final Map<String, List<Map<String, dynamic>>> byWorker = {};
+    for (var t in mockTasks) {
+      final w = t['worker'] as String;
+      byWorker.putIfAbsent(w, () => []).add(t);
+    }
+
+    // 对每个worker做合并
+    final Map<String, List<ProcessMergeData>> result = {};
+    for (var entry in byWorker.entries) {
+      result[entry.key] = _buildMockMergeGroups(entry.value);
+    }
+
+    return result;
+  }
+
+  List<ProcessMergeData> _buildMockMergeGroups(List<Map<String, dynamic>> tasks) {
+    final Map<String, ProcessMergeData> groups = {};
+
+    for (var t in tasks) {
+      final String spec = t['spec'] as String;
+      final String processName = t['process'] as String;
+
+      final ProcessType? processType = ProcessType.tryFromCode(processName);
+      if (processType == null) continue;
+      final String normalizedProcess = processType.code;
+
+      // 复用真实解析逻辑
+      final parsedInfo = _parseSpec(spec);
+      final String specType = parsedInfo['specType'] ?? '';
+      final String material = parsedInfo['material'] ?? '碳钢';
+      final double length = parsedInfo['length'] ?? 0.0;
+      final String shape = parsedInfo['shape'] ?? 'Z';
+      final String groupType = parsedInfo['groupType'] ?? '';
+      final double spacing = parsedInfo['spacing'] ?? 0.0;
+      final String connector = parsedInfo['connector'] ?? '';
+
+      final String key = _buildMergeKey(normalizedProcess, processType, {
+        'specType': specType,
+        'material': material,
+        'length': length,
+        'shape': shape,
+        'groupType': groupType,
+        'spacing': spacing,
+        'connector': connector,
+      });
+
+      debugPrint('[Mock合并] #${t['id']} "${t['name']}" spec=$spec → key=$key');
+
+      final item = ProcessTaskItem(
+        id: t['id'] as int,
+        taskNo: 'MOCK${t['id']}',
+        orderNo: 'ORD${t['id']}',
+        erpName: t['name'] as String,
+        erpModel: spec,
+        shape: shape,
+        groupType: groupType,
+        spacing: spacing,
+        connector: connector,
+        quantity: (t['qty'] as int).toDouble(),
+        processQty: (t['qty'] as int).toDouble(),
+        length: length,
+      );
+
+      if (groups.containsKey(key)) {
+        groups[key]!.tasks.add(item);
+      } else {
+        groups[key] = ProcessMergeData(
+          id: key,
+          processCode: normalizedProcess,
+          processName: processType.name,
+          productType: specType,
+          material: material,
+          model: specType,
+          length: length,
+          shape: shape,
+          groupType: groupType,
+          spacing: spacing,
+          connector: connector,
+          mergeKey: key,
+          tasks: [item],
+          totalQuantity: 0,
+          totalMeters: 0,
+        );
+      }
+    }
+
+    return groups.values.map((group) {
+      double totalQty = 0;
+      for (var t in group.tasks) {
+        totalQty += t.processQty;
+      }
+      return ProcessMergeData(
+        id: group.id,
+        processCode: group.processCode,
+        processName: group.processName,
+        productType: group.productType,
+        material: group.material,
+        model: group.model,
+        length: group.length,
+        shape: group.shape,
+        groupType: group.groupType,
+        spacing: group.spacing,
+        connector: group.connector,
+        mergeKey: group.mergeKey,
+        tasks: group.tasks,
+        totalQuantity: totalQty,
+        totalMeters: 0,
+      );
+    }).toList();
+  }
+
+  /// 纯规格解析（不依赖ApiTaskData）
+  Map<String, dynamic> _parseSpec(String spec) {
+    String material = '碳钢';
+    double length = 0;
+    String shape = 'Z';
+    String specType = '';
+    String groupType = '';
+    double spacing = 0;
+
+    String normalized = spec.replaceAll('（', '(').replaceAll('）', ')');
+
+    final bracketMatch = RegExp(r'\(([^)]+)\)').firstMatch(normalized);
+    if (bracketMatch != null) {
+      String content = bracketMatch.group(1) ?? '';
+      List<String> spacings = content.split('-');
+      if (spacings.length >= 2) {
+        groupType = '三根';
+        spacing = double.tryParse(spacings[0].trim()) ?? 0;
+      } else if (spacings.length == 1 && spacings[0].trim().isNotEmpty) {
+        groupType = '双根';
+        spacing = double.tryParse(spacings[0].trim()) ?? 0;
+      }
+    }
+
+    String cleaned = normalized.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    if (cleaned.toUpperCase().contains('A4')) material = '不锈钢';
+
+    List<String> parts = cleaned.split('-');
+    if (parts.isNotEmpty) specType = parts[0].trim();
+    if (parts.length > 1) {
+      String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
+      length = double.tryParse(lenStr) ?? 0;
+    }
+    if (parts.length > 2) {
+      String shapePart = parts[2].trim().toUpperCase().replaceAll(RegExp(r'\s*A4$'), '');
+      shape = shapePart.startsWith('R') ? shapePart : 'Z';
+    }
+
+    return {
+      'specType': specType, 'material': material, 'length': length,
+      'shape': shape, 'groupType': groupType, 'spacing': spacing, 'connector': '',
+    };
+  }
+
   /// 从API加载数据，按worker分组再按工序合并
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
     try {
+      // ===== Mock模式 =====
+      if (_useMock) {
+        final mockGrouped = _buildMockData();
+        final sortedNames = mockGrouped.keys.toList();
+        final leaderName = widget.userInfo.realName;
+        sortedNames.sort((a, b) {
+          if (a == leaderName) return -1;
+          if (b == leaderName) return 1;
+          return a.compareTo(b);
+        });
+
+        if (mounted) {
+          setState(() {
+            _workerGroupedData = mockGrouped;
+            _sortedWorkerNames = sortedNames;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      // ===== 正常API模式 =====
       // 班长：不限workerId，看全组；员工：只看自己
       // 默认筛选当天任务
       final now = DateTime.now();

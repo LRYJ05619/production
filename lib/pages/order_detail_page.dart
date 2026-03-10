@@ -78,7 +78,27 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   /// 转入数量（米）
   double get _transferInQty => _task.plan?.transferInQty ?? 0;
 
-  /// 转入数量转换为根（槽道时）
+  /// 已完成数量（米）— 使用计划级别的已完成数量，与transferInQty同级
+  double get _completedQty => _task.plan?.completedQty ?? 0;
+
+  /// 总废品数量（米）— 计划级别
+  double get _totalWasteQty => _task.plan?.totalWasteQty ?? 0;
+
+  /// 可报工数量 = 转入数量 - 已完成数量 - 总废品数量（米）
+  double get _remainingQty {
+    final remaining = _transferInQty - _completedQty - _totalWasteQty;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// 可报工数量转换为显示值（槽道时为根）
+  double get _remainingQtyDisplay {
+    if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
+      return _remainingQty / _caoDaoLengthMeters;
+    }
+    return _remainingQty;
+  }
+
+  /// 转入数量转换为根（槽道时）— 保留用于展示原始转入量
   double get _transferInQtyDisplay {
     if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
       return _transferInQty / _caoDaoLengthMeters;
@@ -214,10 +234,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             '${_isCaoDaoCutting ? displayAssignedQty.toInt() : _task.assignedQty.toInt()} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
         _buildInfoRow('操  作  者:', _task.workerName),
-        // 非首道工序时显示转入数量
+        // 非首道工序时显示可报工数量
         if (_isNotFirstOper)
-          _buildInfoRow('转 入 数 量:',
-              '${_isCaoDaoCutting ? _transferInQtyDisplay.toInt() : _transferInQty.toInt()} $_displayUnit'),
+          _buildInfoRow('可报工数量:',
+              '${_remainingQtyDisplay.toInt()} $_displayUnit'),
         ..._buildRoleContent(),
       ],
     );
@@ -279,8 +299,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '非首道工序，提报总数量不能超过转入数量 '
-                      '${_isCaoDaoCutting ? _transferInQtyDisplay.toInt() : _transferInQty.toInt()} $_displayUnit',
+                  '非首道工序，提报总数量不能超过可报工数量 '
+                      '${_remainingQtyDisplay.toInt()} $_displayUnit',
                   style: TextStyle(
                       fontSize: 12, color: Colors.amber.shade800),
                 ),
@@ -509,13 +529,20 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       return;
     }
 
-    // 非首道工序校验：提报总数量不能超过转入数量
+    // 实际工时必须大于0
+    final workHours = double.tryParse(_workHoursController.text) ?? 0;
+    if (workHours <= 0) {
+      _showError('实际工时必须大于0');
+      return;
+    }
+
+    // 非首道工序校验：提报总数量不能超过可报工数量（转入-已完成）
     if (_isNotFirstOper) {
       final totalInput =
           inputQualified + inputWorkWaste + inputMaterialWaste;
-      if (totalInput > _transferInQtyDisplay) {
+      if (totalInput > _remainingQtyDisplay) {
         _showError(
-            '提报总数量(${totalInput.toInt()})超过转入数量(${_transferInQtyDisplay.toInt()})，请检查');
+            '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
         return;
       }
     }
@@ -536,7 +563,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       materialWasteQty: apiMaterialWaste,
       repairQty: apiRepair,
       lossQty: apiLoss,
-      workHours: double.tryParse(_workHoursController.text) ?? 0,
+      workHours: workHours,
       completedQty: apiCompleted,
     );
     setState(() => _isSubmitting = false);
