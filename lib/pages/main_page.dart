@@ -21,7 +21,9 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _selectedIndex = 0;
-  FilterCriteria _filter = FilterCriteria();
+  // 生产任务和历史记录使用独立筛选
+  FilterCriteria _taskFilter = FilterCriteria();
+  FilterCriteria _historyFilter = FilterCriteria();
   Timer? _refreshTimer;
 
   final GlobalKey<_TaskListViewState> _taskListKey = GlobalKey();
@@ -32,7 +34,7 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
-    _refreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _refreshCurrentTab();
     });
   }
@@ -60,18 +62,51 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
+  /// 获取当前页签对应的筛选
+  FilterCriteria get _currentFilter {
+    if (_selectedIndex == 1) return _taskFilter;
+    if (_selectedIndex == 3) return _historyFilter;
+    return FilterCriteria();
+  }
+
   void _onFilterChanged(FilterCriteria filter) {
-    setState(() => _filter = filter);
+    setState(() {
+      if (_selectedIndex == 1) {
+        _taskFilter = filter;
+      } else if (_selectedIndex == 3) {
+        _historyFilter = filter;
+      }
+    });
+  }
+
+  void _clearCurrentFilter() {
+    setState(() {
+      if (_selectedIndex == 1) {
+        _taskFilter = FilterCriteria();
+      } else if (_selectedIndex == 3) {
+        _historyFilter = FilterCriteria();
+      }
+    });
   }
 
   void _showFilterDialog() {
     showDialog(
       context: context,
       builder: (context) => FilterDialog(
-        initialFilter: _filter,
+        initialFilter: _currentFilter,
         onApply: _onFilterChanged,
       ),
     );
+  }
+
+  /// 切换页签时自动刷新
+  void _onTabChanged(int index) {
+    if (index == _selectedIndex) return;
+    setState(() => _selectedIndex = index);
+    // 延迟一帧确保State已切换，再刷新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshCurrentTab();
+    });
   }
 
   Future<void> _logout() async {
@@ -128,17 +163,17 @@ class _MainPageState extends State<MainPage> {
           ],
         ),
         actions: [
-          if (_selectedIndex != 0 && _selectedIndex != 2)
-            FilterButton(hasFilter: _filter.hasFilter, onPressed: _showFilterDialog),
+          if (_selectedIndex == 1 || _selectedIndex == 3)
+            FilterButton(hasFilter: _currentFilter.hasFilter, onPressed: _showFilterDialog),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: '退出登录'),
         ],
       ),
       body: Column(
         children: [
-          if (_filter.hasFilter && _selectedIndex != 0)
+          if (_currentFilter.hasFilter && (_selectedIndex == 1 || _selectedIndex == 3))
             ActiveFiltersBar(
-              filter: _filter,
-              onClear: () => setState(() => _filter = FilterCriteria()),
+              filter: _currentFilter,
+              onClear: _clearCurrentFilter,
             ),
           Expanded(
             child: IndexedStack(
@@ -151,7 +186,7 @@ class _MainPageState extends State<MainPage> {
                 TaskListView(
                   key: _taskListKey,
                   userInfo: widget.userInfo,
-                  filter: _filter,
+                  filter: _taskFilter,
                 ),
                 ExtraWorkListView(
                   key: _extraWorkKey,
@@ -160,7 +195,7 @@ class _MainPageState extends State<MainPage> {
                 HistoryListView(
                   key: _historyKey,
                   userInfo: widget.userInfo,
-                  filter: _filter,
+                  filter: _historyFilter,
                 ),
               ],
             ),
@@ -169,7 +204,7 @@ class _MainPageState extends State<MainPage> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
+        onTap: _onTabChanged,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
