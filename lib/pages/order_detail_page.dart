@@ -536,16 +536,16 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       return;
     }
 
-    // 非首道工序校验：提报总数量不能超过可报工数量（转入-已完成）
-    if (_isNotFirstOper) {
-      final totalInput =
-          inputQualified + inputWorkWaste + inputMaterialWaste;
-      if (totalInput > _remainingQtyDisplay) {
-        _showError(
-            '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
-        return;
-      }
-    }
+    // // 非首道工序校验：提报总数量不能超过可报工数量（转入-已完成）
+    // if (_isNotFirstOper) {
+    //   final totalInput =
+    //       inputQualified + inputWorkWaste + inputMaterialWaste;
+    //   if (totalInput > _remainingQtyDisplay) {
+    //     _showError(
+    //         '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
+    //     return;
+    //   }
+    // }
 
     // 转换为接口需要的数量（槽道：根→米）
     final apiQualified = _convertToApiQty(inputQualified);

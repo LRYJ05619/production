@@ -49,8 +49,10 @@ class ApiResult {
 
 class ApiService {
   // ==================== 服务器配置 ====================
-  static String _serverIp = '61.181.91.2';
-  static int _serverPort = 1680;
+  // static String _serverIp = '61.181.91.2';
+  // static int _serverPort = 1680;
+  static String _serverIp = '192.168.1.6';
+  static int _serverPort = 8080;
   static String? _token;
   static UserInfo? _currentUser;
 
@@ -166,12 +168,13 @@ class ApiService {
           queryParams['team_id'] = filter.teamId.toString();
       }
 
-      // 默认筛选当天任务（未手动指定时间范围时）
+      // 默认筛选三天内任务（未手动指定时间范围时）
       if (!queryParams.containsKey('start_time')) {
-        final today = DateTime.now();
-        final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-        queryParams['start_time'] = '$dateStr 00:00:00';
-        queryParams['end_time'] = '$dateStr 23:59:59';
+        final now = DateTime.now();
+        final threeDaysAgo = now.subtract(const Duration(days: 3));
+        String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        queryParams['start_time'] = '${fmt(threeDaysAgo)} 00:00:00';
+        queryParams['end_time'] = '${fmt(now)} 23:59:59';
       }
 
       final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks')
@@ -373,12 +376,13 @@ class ApiService {
           queryParams['team_id'] = filter.teamId.toString();
       }
 
-      // 默认筛选当天任务（未手动指定时间范围时）
+      // 默认筛选三天内任务（未手动指定时间范围时）
       if (!queryParams.containsKey('start_time')) {
-        final today = DateTime.now();
-        final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-        queryParams['start_time'] = '$dateStr 00:00:00';
-        queryParams['end_time'] = '$dateStr 23:59:59';
+        final now = DateTime.now();
+        final threeDaysAgo = now.subtract(const Duration(days: 3));
+        String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        queryParams['start_time'] = '${fmt(threeDaysAgo)} 00:00:00';
+        queryParams['end_time'] = '${fmt(now)} 23:59:59';
       }
 
       final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks')
