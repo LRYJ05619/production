@@ -196,6 +196,7 @@ class PlanInfo {
   final double progress;
   final double transferInQty;
   final bool isFirstOper;
+  final bool freeReport;
   final int status;
 
   PlanInfo({
@@ -220,6 +221,7 @@ class PlanInfo {
     required this.progress,
     required this.transferInQty,
     required this.isFirstOper,
+    required this.freeReport,
     required this.status,
   });
 
@@ -250,6 +252,7 @@ class PlanInfo {
       progress: (json['progress'] ?? 0).toDouble(),
       transferInQty: (json['transfer_in_qty'] ?? 0).toDouble(),
       isFirstOper: json['is_first_oper'] ?? false,
+      freeReport: json['free_report'] ?? false,
       status: json['status'] ?? 0,
     );
   }
@@ -567,6 +570,7 @@ class ApiTaskData {
   final String errorMsg;
   final DateTime? reportTime;
   final bool isSettled;
+  final bool freeReport;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -621,6 +625,7 @@ class ApiTaskData {
     required this.errorMsg,
     this.reportTime,
     required this.isSettled,
+    required this.freeReport,
     required this.createdAt,
     required this.updatedAt,
     String? orderNo,
@@ -687,6 +692,7 @@ class ApiTaskData {
       errorMsg: json['error_msg'] ?? '',
       reportTime: json['report_time'] != null ? DateTime.tryParse(json['report_time']) : null,
       isSettled: json['is_settled'] ?? false,
+      freeReport: json['free_report'] ?? false,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
     );
@@ -723,6 +729,7 @@ class ApiTaskData {
       reportStatus: 0,
       errorMsg: '',
       isSettled: false,
+      freeReport: false,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
       // 列表直接提供的字段

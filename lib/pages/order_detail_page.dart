@@ -75,6 +75,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   /// 是否非首道工序（需要校验转入数量）
   bool get _isNotFirstOper => _task.plan != null && !_task.plan!.isFirstOper;
 
+  /// 是否自由报工（不受转入数量限制），来自任务详情data层的free_report字段
+  bool get _isFreeReport => _task.freeReport;
+
+  /// 是否需要数量限制（非首道且非自由报工）
+  bool get _needQtyLimit => _isNotFirstOper && !_isFreeReport;
+
   /// 转入数量（米）
   double get _transferInQty => _task.plan?.transferInQty ?? 0;
 
@@ -234,8 +240,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             '${_isCaoDaoCutting ? displayAssignedQty.toInt() : _task.assignedQty.toInt()} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
         _buildInfoRow('操  作  者:', _task.workerName),
-        // 非首道工序时显示可报工数量
-        if (_isNotFirstOper)
+        // 非首道工序且非自由报工时显示可报工数量
+        if (_needQtyLimit)
           _buildInfoRow('可报工数量:',
               '${_remainingQtyDisplay.toInt()} $_displayUnit'),
         ..._buildRoleContent(),
@@ -283,8 +289,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       return [
         const Divider(height: 32),
         _buildSectionTitle('完工报工'),
-        // 非首道工序提示转入数量限制
-        if (_isNotFirstOper) ...[
+        // 非首道工序且非自由报工时提示数量限制
+        if (_needQtyLimit) ...[
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(10),
@@ -536,16 +542,16 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       return;
     }
 
-    // // 非首道工序校验：提报总数量不能超过可报工数量（转入-已完成）
-    // if (_isNotFirstOper) {
-    //   final totalInput =
-    //       inputQualified + inputWorkWaste + inputMaterialWaste;
-    //   if (totalInput > _remainingQtyDisplay) {
-    //     _showError(
-    //         '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
-    //     return;
-    //   }
-    // }
+    // 非首道工序且非自由报工：提报总数量不能超过可报工数量
+    if (_needQtyLimit) {
+      final totalInput =
+          inputQualified + inputWorkWaste + inputMaterialWaste;
+      if (totalInput > _remainingQtyDisplay) {
+        _showError(
+            '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
+        return;
+      }
+    }
 
     // 转换为接口需要的数量（槽道：根→米）
     final apiQualified = _convertToApiQty(inputQualified);
