@@ -26,7 +26,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   late TextEditingController _materialWasteQtyController;
   late TextEditingController _repairQtyController;
   late TextEditingController _lossQtyController;
-  late TextEditingController _workHoursController;
   late TextEditingController _qcQualifiedQtyController;
   late TextEditingController _qcWasteQtyController;
   late TextEditingController _qcOpinionController;
@@ -118,6 +117,13 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     return _task.unit;
   }
 
+  /// 自动计算实际工时（提报时间 - 开始时间，精确到小时保留一位小数）
+  double _calcWorkHours() {
+    if (_task.startTime == null) return 0;
+    final minutes = DateTime.now().difference(_task.startTime!).inMinutes;
+    return double.parse((minutes / 60.0).toStringAsFixed(1));
+  }
+
   /// 将用户输入的数量（根）转为接口需要的数量（米）
   double _convertToApiQty(double inputQty) {
     if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
@@ -158,8 +164,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         text: displayRepair > 0 ? '${displayRepair.toInt()}' : '');
     _lossQtyController = TextEditingController(
         text: displayLoss > 0 ? '${displayLoss.toInt()}' : '');
-    _workHoursController = TextEditingController(
-        text: _task.workHours > 0 ? '${_task.workHours}' : '');
     _qcQualifiedQtyController = TextEditingController(
         text: displayQcQualified > 0 ? '${displayQcQualified.toInt()}' : '');
     _qcWasteQtyController = TextEditingController(
@@ -175,7 +179,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     _materialWasteQtyController.dispose();
     _repairQtyController.dispose();
     _lossQtyController.dispose();
-    _workHoursController.dispose();
     _qcQualifiedQtyController.dispose();
     _qcWasteQtyController.dispose();
     _qcOpinionController.dispose();
@@ -236,6 +239,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         _buildInfoRow('产 品 名 称:', _task.productName),
         _buildInfoRow('规 格 型 号:', _task.specModel),
         _buildInfoRow('工      序:', _task.processName),
+        if (_task.remark.isNotEmpty)
+          _buildInfoRow('连 接 物 体:', _task.remark),
         _buildInfoRow('计 划 数 量:',
             '${_isCaoDaoCutting ? displayAssignedQty.toInt() : _task.assignedQty.toInt()} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
@@ -316,7 +321,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         ],
         _buildEditRow('完 成 数 量:', _qualifiedQtyController,
             suffix: _displayUnit),
-        _buildEditRowSuffix('实 际 工 时:', _workHoursController, '小时'),
         _buildEditRow('工 废 数 量:', _workWasteQtyController,
             suffix: _displayUnit),
         _buildEditRow('料 废 数 量:', _materialWasteQtyController,
@@ -535,12 +539,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       return;
     }
 
-    // 实际工时必须大于0
-    final workHours = double.tryParse(_workHoursController.text) ?? 0;
-    if (workHours <= 0) {
-      _showError('实际工时必须大于0');
-      return;
-    }
+    // 自动计算实际工时（提报时间 - 开始时间）
+    final workHours = _calcWorkHours();
 
     // 非首道工序且非自由报工：提报总数量不能超过可报工数量
     if (_needQtyLimit) {

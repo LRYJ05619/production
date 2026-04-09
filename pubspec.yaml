@@ -2,7 +2,7 @@ name: production_app
 description: 生产管理平台移动端
 publish_to: 'none'
 
-version: 0.9.12
+version: 0.9.15
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

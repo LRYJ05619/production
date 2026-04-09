@@ -197,6 +197,7 @@ class PlanInfo {
   final double transferInQty;
   final bool isFirstOper;
   final bool freeReport;
+  final String remark;
   final int status;
 
   PlanInfo({
@@ -222,6 +223,7 @@ class PlanInfo {
     required this.transferInQty,
     required this.isFirstOper,
     required this.freeReport,
+    required this.remark,
     required this.status,
   });
 
@@ -253,12 +255,13 @@ class PlanInfo {
       transferInQty: (json['transfer_in_qty'] ?? 0).toDouble(),
       isFirstOper: json['is_first_oper'] ?? false,
       freeReport: json['free_report'] ?? false,
+      remark: json['remark'] ?? '',
       status: json['status'] ?? 0,
     );
   }
 }
 
-// ==================== 计划外工作信息模型（来自extra_work关联对象） ====================
+// ==================== 计划外工作信息模型 ====================
 class ExtraWorkInfo {
   final int id;
   final String workNo;           // 编号，格式EW...
@@ -334,9 +337,8 @@ class ExtraWorkInfo {
   }
 }
 
-// ==================== 计划外工作任务数据模型（完整的task数据） ====================
+// ==================== 计划外工作任务数据模型 ====================
 class ExtraWorkData {
-  // 任务基本信息
   final int id;
   final String taskNo;
   final int taskType;  // 固定为2
@@ -573,6 +575,7 @@ class ApiTaskData {
   final bool freeReport;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? startTime;
 
   // 列表数据直接提供的字段（不通过plan获取）
   final String? _orderNo;
@@ -583,6 +586,7 @@ class ApiTaskData {
   final int? _planQty;
   final String? _workerName;
   final String? _specModel;
+  final String? _remark;
 
   ApiTaskData({
     required this.id,
@@ -628,6 +632,7 @@ class ApiTaskData {
     required this.freeReport,
     required this.createdAt,
     required this.updatedAt,
+    this.startTime,
     String? orderNo,
     String? productCode,
     String? productName,
@@ -636,6 +641,7 @@ class ApiTaskData {
     int? planQty,
     String? workerName,
     String? specModel,
+    String? remark,
   }) : _orderNo = orderNo,
         _productCode = productCode,
         _productName = productName,
@@ -643,7 +649,8 @@ class ApiTaskData {
         _processName = processName,
         _planQty = planQty,
         _workerName = workerName,
-        _specModel = specModel;
+        _specModel = specModel,
+        _remark = remark;
 
   /// 从详情接口创建
   factory ApiTaskData.fromJson(Map<String, dynamic> json) {
@@ -695,6 +702,8 @@ class ApiTaskData {
       freeReport: json['free_report'] ?? false,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
+      startTime: json['start_time'] != null ? DateTime.tryParse(json['start_time']) : null,
+      remark: json['remark'],
     );
   }
 
@@ -742,6 +751,8 @@ class ApiTaskData {
       assignedQty: json['assigned_qty']?.toInt(),
       workerName: json['worker_name'],
       specModel: json['spec_model'],
+      startTime: json['start_time'] != null ? DateTime.tryParse(json['start_time']) : null,
+      remark: json['remark'],
     );
   }
 
@@ -754,6 +765,7 @@ class ApiTaskData {
   int get planQty => _planQty ?? plan?.planQty ?? 0;
   String get specModel => _specModel ?? plan?.specModel ?? '';
   String get unit => plan?.unit ?? '个';
+  String get remark => _remark ?? plan?.remark ?? '';
 
   // 便捷getter - 从关联用户获取
   String get workerName => _workerName ?? worker?.realName ?? '';

@@ -165,6 +165,7 @@ class ProcessTaskItem {
   final double processQty;    // API原始值（米）
   final double length;        // mm
   final ApiTaskStatus status;
+  final DateTime? startTime;
 
   ProcessTaskItem({
     required this.id,
@@ -180,6 +181,7 @@ class ProcessTaskItem {
     required this.processQty,
     required this.length,
     required this.status,
+    this.startTime,
   });
 
   double get lengthMeters => length / 1000.0;
@@ -199,6 +201,13 @@ class ProcessTaskItem {
     return processQty;
   }
 
+  /// 自动计算实际工时（提报时间 - 开始时间）
+  double calcWorkHours() {
+    if (startTime == null) return 0;
+    final minutes = DateTime.now().difference(startTime!).inMinutes;
+    return double.parse((minutes / 60.0).toStringAsFixed(1));
+  }
+
   factory ProcessTaskItem.fromApiTask(ApiTaskData task, Map<String, dynamic> parsedInfo) {
     return ProcessTaskItem(
       id: task.id,
@@ -209,11 +218,12 @@ class ProcessTaskItem {
       shape: parsedInfo['shape'] ?? '',
       groupType: parsedInfo['groupType'] ?? '',
       spacing: parsedInfo['spacing'] ?? 0.0,
-      connector: parsedInfo['connector'] ?? '',
+      connector: task.remark.isNotEmpty ? task.remark : (parsedInfo['connector'] ?? ''),
       quantity: (task.planQty).toDouble(),
       processQty: (task.assignedQty).toDouble(),
       length: parsedInfo['length'] ?? 0.0,
       status: task.status,
+      startTime: task.startTime,
     );
   }
 }
@@ -234,6 +244,7 @@ class ProcessMergeView extends StatefulWidget {
 class ProcessMergeViewState extends State<ProcessMergeView> {
   final ApiService _apiService = ApiService();
   bool _isLoading = true;
+  bool _isFirstLoad = true;  // 仅首次加载显示loading，后续无痕刷新
 
   // 按worker分组的合并数据：key=workerName, value=该worker的合并结果
   Map<String, List<ProcessMergeData>> _workerGroupedData = {};
@@ -254,27 +265,19 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
   /// 从API加载数据，按worker分组再按工序合并
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    // 仅首次加载显示loading动画，后续刷新无痕更新数据
+    if (_isFirstLoad) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       // 班长：不限workerId，看全组；员工：只看自己
-      // 默认筛选当天任务
-      final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day);
-      final todayEnd = todayStart.add(const Duration(days: 1));
-
+      // 日期筛选由api_service默认处理（三天内）
       final FilterCriteria filter;
       if (_isLeader) {
-        filter = FilterCriteria(
-          startTime: todayStart.toIso8601String(),
-          endTime: todayEnd.toIso8601String(),
-        );
+        filter = FilterCriteria();
       } else {
-        filter = FilterCriteria(
-          workerId: widget.userInfo.id,
-          startTime: todayStart.toIso8601String(),
-          endTime: todayEnd.toIso8601String(),
-        );
+        filter = FilterCriteria(workerId: widget.userInfo.id);
       }
 
       final response = await _apiService.getTaskList(
@@ -322,6 +325,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
           _workerGroupedData = grouped;
           _sortedWorkerNames = sortedNames;
           _isLoading = false;
+          _isFirstLoad = false;
         });
       }
     } catch (e) {
@@ -331,6 +335,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
           _workerGroupedData = {};
           _sortedWorkerNames = [];
           _isLoading = false;
+          _isFirstLoad = false;
         });
       }
     }
@@ -346,6 +351,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         'process_code': '成组焊接', 'process_name': '槽道成组焊接',
         'worker_name': widget.userInfo.realName, 'worker_id': widget.userInfo.id,
         'plan_qty': 500, 'assigned_qty': 500, 'status': 2, 'unit': '米',
+        'start_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
       },
       // #2 A组：同 #1（预埋/外置不影响合并key）
       {
@@ -354,6 +360,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         'process_code': '成组焊接', 'process_name': '槽道成组焊接',
         'worker_name': widget.userInfo.realName, 'worker_id': widget.userInfo.id,
         'plan_qty': 300, 'assigned_qty': 300, 'status': 2, 'unit': '米',
+        'start_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
       },
       // #3 B组：三根（groupType不同）
       {
@@ -428,7 +435,8 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       final String shape = parsedInfo['shape'];
       final String groupType = parsedInfo['groupType'] ?? '';
       final double spacing = parsedInfo['spacing'] ?? 0.0;
-      final String connector = parsedInfo['connector'] ?? '';
+      // 连接物体来自API的remark字段
+      final String connector = task.remark.isNotEmpty ? task.remark : (parsedInfo['connector'] ?? '');
 
       // 按mergeRule动态构建合并key
       final String key = _buildMergeKey(normalizedProcess, processType, {
@@ -443,7 +451,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
       debugPrint('[合并] 任务${task.taskNo}: processName=$processName → $normalizedProcess, '
           'specType=$specType, length=$length, shape=$shape, groupType=$groupType, '
-          'spec=${task.specModel} → key=$key');
+          'connector=$connector, spec=${task.specModel} → key=$key');
 
       final taskItem = ProcessTaskItem.fromApiTask(task, parsedInfo);
 
@@ -723,15 +731,48 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     );
   }
 
-  Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
-    final bool isArc = data.shape.startsWith('R');
-    final String shapeText = isArc ? '弧形 ${data.shape}' : '直形';
-    final Color shapeColor = isArc ? Colors.cyan : Colors.teal;
+  /// 按合并规则组成格式化型号字符串
+  String _buildMergedSpec(ProcessMergeData data, ProcessType process) {
+    // 基础：型号-长度
+    final parts = <String>[data.model, '${data.length.toInt()}'];
 
+    // 弯弧/单焊/打磨/组焊：追加形状
+    if (process.mergeRule.contains('直/弧')) {
+      parts.add(data.shape);
+    }
+
+    String spec = parts.join('-');
+
+    // 组焊：追加间距括号
+    if (process.mergeRule.contains('单/双/三') && data.groupType.isNotEmpty) {
+      if (data.groupType == '三根') {
+        spec += ' (${data.spacing.toInt()}-${data.spacing.toInt()})';
+      } else {
+        spec += ' (${data.spacing.toInt()})';
+      }
+    }
+
+    // 组焊：追加连接物体
+    if (process.mergeRule.contains('连接物体') && data.connector.isNotEmpty) {
+      spec += ' ${data.connector}';
+    }
+
+    // 不锈钢追加A4
+    if (data.material == '不锈钢') {
+      spec += ' A4';
+    }
+
+    return spec;
+  }
+
+  Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
     final bool isCutting = data.isCutting;
     final String displayUnit = process.getDisplayUnit(isCutting);
     final int displayTotalQty = isCutting ? data.totalPieces.round() : data.totalQuantity.toInt();
     final int taskCount = data.tasks.length;
+
+    // 格式化型号
+    final String mergedSpec = _buildMergedSpec(data, process);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -763,52 +804,26 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
               ],
             ),
           ),
-          // 第一行：型号 + 材质标签
-          title: Row(
-            children: [
-              Text(
-                data.model,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-              ),
-              const SizedBox(width: 8),
-              _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
-            ],
+          // 格式化型号（允许换行完整显示）
+          title: Text(
+            mergedSpec,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           ),
-          // 第二行 + 第三行
+          // 第二行：材质 + 合计 + 任务数
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                // 第二行：属性标签（根据mergeRule展示）
-                // 所有工序：长度
-                // 弯弧/单焊/打磨/成组焊接额外：直/弧
-                // 成组焊接额外：单/双/三 + 间距
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    _buildTag('${data.length.toInt()}mm', Colors.blueGrey),
-                    if (process.mergeRule.contains('直/弧'))
-                      _buildTag(shapeText, shapeColor),
-                    if (process.mergeRule.contains('单/双/三') && data.groupType.isNotEmpty)
-                      _buildTag('${data.groupType} 间距${data.spacing.toInt()}', Colors.purple),
-                  ],
+                _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
+                const SizedBox(width: 8),
+                Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                Text(
+                  '$displayTotalQty',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
                 ),
-                const SizedBox(height: 6),
-                // 第三行：合计数量 + 任务数
-                Row(
-                  children: [
-                    Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                    Text(
-                      '$displayTotalQty',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
-                    ),
-                    Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                    const SizedBox(width: 10),
-                    Text('$taskCount个任务', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
-                  ],
-                ),
+                Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                const SizedBox(width: 8),
+                Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
               ],
             ),
           ),
@@ -816,6 +831,25 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
             const Divider(height: 1),
             const SizedBox(height: 8),
             ...data.tasks.map((task) => _buildTaskItem(task, process, data.isCutting)),
+            // 合并提报按钮（仅当有可提报任务时显示）
+            if (data.tasks.any((t) => _isReportable(t.status)))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showBatchReportDialog(data, process),
+                    icon: const Icon(Icons.send, size: 16),
+                    label: Text('合并提报 (${data.tasks.where((t) => _isReportable(t.status)).length}个可提报)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: process.color,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -845,7 +879,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
             borderRadius: BorderRadius.circular(8),
@@ -857,7 +891,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
               // 第一行：产品名称（独占一行，避免过长换行）
               Text(
                 task.erpName,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[800]),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey[800]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -865,7 +899,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
               // 第二行：规格型号（独占一行）
               Text(
                 task.erpModel,
-                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -882,7 +916,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
                     ),
                     child: Text(
                       task.status.text,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: task.status.color),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: task.status.color),
                     ),
                   ),
                   const Spacer(),
@@ -905,6 +939,256 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         ),
       ),
     );
+  }
+
+  /// 判断任务状态是否支持提报（已领取、班长发回、质检发回）
+  bool _isReportable(ApiTaskStatus status) {
+    return status == ApiTaskStatus.claimed ||
+        status == ApiTaskStatus.leaderReject ||
+        status == ApiTaskStatus.qcReject;
+  }
+
+  /// 合并提报对话框 —— 用户自行填写每个任务的数量
+  void _showBatchReportDialog(ProcessMergeData data, ProcessType process) {
+    final bool isCutting = data.isCutting;
+    final String displayUnit = process.getDisplayUnit(isCutting);
+
+    // 仅筛选可提报的任务
+    final reportableTasks = data.tasks.where((t) => _isReportable(t.status)).toList();
+    if (reportableTasks.isEmpty) {
+      AppToast.info(context, '当前没有可提报的任务');
+      return;
+    }
+
+    // 为每个任务创建输入控制器：[qualified, workWaste, materialWaste]
+    final Map<int, List<TextEditingController>> controllers = {};
+    for (var task in reportableTasks) {
+      controllers[task.id] = [
+        TextEditingController(), // 合格数量
+        TextEditingController(), // 工废数量
+        TextEditingController(), // 料废数量
+      ];
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('合并提报 - ${process.name}', style: const TextStyle(fontSize: 16)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_buildMergedSpec(data, process),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                Text('共${reportableTasks.length}个可提报任务，请分别填写数量',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                const SizedBox(height: 12),
+                // 每个任务一组输入
+                ...reportableTasks.map((task) {
+                  final ctrls = controllers[task.id]!;
+                  final int displayQty = task.getDisplayQty(isCutting).round();
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 任务标题：产品名 + 派工数量
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(task.erpName,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                            Text('派工: $displayQty $displayUnit',
+                                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // 数量输入行
+                        Row(
+                          children: [
+                            _buildCompactField('合格', ctrls[0], displayUnit),
+                            const SizedBox(width: 6),
+                            _buildCompactField('工废', ctrls[1], displayUnit),
+                            const SizedBox(width: 6),
+                            _buildCompactField('料废', ctrls[2], displayUnit),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // 收集每个任务的数据
+              final taskInputs = <int, List<double>>{};
+              for (var task in reportableTasks) {
+                final ctrls = controllers[task.id]!;
+                taskInputs[task.id] = [
+                  double.tryParse(ctrls[0].text) ?? 0,
+                  double.tryParse(ctrls[1].text) ?? 0,
+                  double.tryParse(ctrls[2].text) ?? 0,
+                ];
+              }
+              Navigator.pop(ctx);
+              _submitBatchReport(data, process, reportableTasks, taskInputs);
+            },
+            child: const Text('提交'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 紧凑输入框（对话框内使用）
+  Widget _buildCompactField(String label, TextEditingController ctrl, String unit) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+          const SizedBox(height: 2),
+          TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: const OutlineInputBorder(),
+              hintText: '0',
+              hintStyle: TextStyle(fontSize: 12, color: Colors.grey[400]),
+            ),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 执行合并提报：用户自行填写的数量，逐任务提交
+  Future<void> _submitBatchReport(
+      ProcessMergeData data,
+      ProcessType process,
+      List<ProcessTaskItem> reportableTasks,
+      Map<int, List<double>> taskInputs,
+      ) async {
+    final bool isCutting = data.isCutting;
+
+    // 单位转换：断料工序用户输入根数，需转为米
+    double toApi(double displayQty) {
+      if (isCutting && data.lengthMeters > 0) {
+        return displayQty * data.lengthMeters;
+      }
+      return displayQty;
+    }
+
+    final List<Map<String, dynamic>> items = [];
+
+    // 计算总工时：提报时间 - 最早的开始时间，精确到小时保留一位小数
+    DateTime? earliestStart;
+    for (var task in reportableTasks) {
+      if (task.startTime != null) {
+        if (earliestStart == null || task.startTime!.isBefore(earliestStart)) {
+          earliestStart = task.startTime;
+        }
+      }
+    }
+    final double totalWorkHours = earliestStart != null
+        ? double.parse((DateTime.now().difference(earliestStart).inMinutes / 60.0).toStringAsFixed(1))
+        : 0;
+
+    // 收集有效任务（有填写数量的）及其派工量
+    final validTasks = <ProcessTaskItem>[];
+    final validInputs = <List<double>>[];
+    for (var task in reportableTasks) {
+      final input = taskInputs[task.id];
+      if (input == null) continue;
+      if (input[0] <= 0 && input[1] <= 0 && input[2] <= 0) continue;
+      validTasks.add(task);
+      validInputs.add(input);
+    }
+
+    if (validTasks.isEmpty) {
+      AppToast.error(context, '请至少填写一个任务的合格数量');
+      return;
+    }
+
+    // 按派工数量等比分配工时，保证总和精确相等
+    final double totalAssigned = validTasks.fold(0.0, (sum, t) => sum + t.processQty);
+    double allocatedHours = 0;
+
+    for (int i = 0; i < validTasks.length; i++) {
+      final task = validTasks[i];
+      final input = validInputs[i];
+
+      final double qualified = input[0];
+      final double workWaste = input[1];
+      final double materialWaste = input[2];
+
+      final double apiQualified = toApi(qualified);
+      final double apiWorkWaste = toApi(workWaste);
+      final double apiMaterialWaste = toApi(materialWaste);
+      final double apiCompleted = apiQualified + apiWorkWaste + apiMaterialWaste;
+
+      // 最后一个任务用减法确保总和精确
+      double taskHours;
+      if (i == validTasks.length - 1) {
+        taskHours = double.parse((totalWorkHours - allocatedHours).toStringAsFixed(1));
+      } else {
+        final double ratio = totalAssigned > 0 ? task.processQty / totalAssigned : 1.0 / validTasks.length;
+        taskHours = double.parse((totalWorkHours * ratio).toStringAsFixed(1));
+        allocatedHours += taskHours;
+      }
+
+      items.add({
+        'task_id': task.id,
+        'completed_qty': double.parse(apiCompleted.toStringAsFixed(2)),
+        'qualified_qty': double.parse(apiQualified.toStringAsFixed(2)),
+        'work_waste_qty': double.parse(apiWorkWaste.toStringAsFixed(2)),
+        'material_waste_qty': double.parse(apiMaterialWaste.toStringAsFixed(2)),
+        'repair_qty': 0,
+        'loss_qty': 0,
+        'work_hours': taskHours,
+      });
+    }
+
+    final result = await _apiService.batchReport(items);
+    if (!mounted) return;
+
+    final int code = result['code'] ?? 500;
+    final String message = result['message'] ?? '提交失败';
+
+    if (code == 200) {
+      AppToast.success(context, message);
+    } else if (code == 206) {
+      // 部分成功，显示详情
+      final List<dynamic> resultData = result['data'] ?? [];
+      final failedCount = resultData.where((d) => d['success'] != true).length;
+      AppToast.warning(context, '$message（$failedCount个失败）');
+    } else {
+      AppToast.error(context, message);
+    }
+
+    _loadData(); // 刷新数据
   }
 
   Future<void> _navigateToTaskDetail(int taskId) async {

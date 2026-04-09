@@ -49,10 +49,10 @@ class ApiResult {
 
 class ApiService {
   // ==================== 服务器配置 ====================
-  // static String _serverIp = '61.181.91.2';
-  // static int _serverPort = 1680;
-  static String _serverIp = '192.168.1.6';
-  static int _serverPort = 8080;
+  static String _serverIp = '61.181.91.2';
+  static int _serverPort = 1680;
+  // static String _serverIp = '192.168.1.6';
+  // static int _serverPort = 8080;
   static String? _token;
   static UserInfo? _currentUser;
 
@@ -287,6 +287,24 @@ class ApiService {
     } catch (e) {
       print('完工报工失败: $e');
       return ApiResult(success: false, errorMessage: '网络异常: $e');
+    }
+  }
+
+  /// 批量报工（合并提报）
+  /// items: [{task_id, completed_qty, qualified_qty, work_waste_qty, material_waste_qty, repair_qty, loss_qty, work_hours}]
+  /// 返回: {code: 200/206/400, message, data: [{task_id, success, message}]}
+  Future<Map<String, dynamic>> batchReport(List<Map<String, dynamic>> items) async {
+    try {
+      final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks/batch-report');
+      final response = await _client
+          .post(uri, headers: _headers, body: jsonEncode({'items': items}))
+          .timeout(const Duration(seconds: 15));
+
+      final json = jsonDecode(response.body);
+      return json;
+    } catch (e) {
+      print('批量报工失败: $e');
+      return {'code': 500, 'message': '网络异常: $e', 'data': []};
     }
   }
 
