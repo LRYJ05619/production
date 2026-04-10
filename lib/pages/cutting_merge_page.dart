@@ -165,7 +165,7 @@ class ProcessTaskItem {
   final double processQty;    // API原始值（米）
   final double length;        // mm
   final ApiTaskStatus status;
-  final DateTime? startTime;
+  final DateTime? claimTime;
 
   ProcessTaskItem({
     required this.id,
@@ -181,7 +181,7 @@ class ProcessTaskItem {
     required this.processQty,
     required this.length,
     required this.status,
-    this.startTime,
+    this.claimTime,
   });
 
   double get lengthMeters => length / 1000.0;
@@ -203,8 +203,8 @@ class ProcessTaskItem {
 
   /// 自动计算实际工时（提报时间 - 开始时间）
   double calcWorkHours() {
-    if (startTime == null) return 0;
-    final minutes = DateTime.now().difference(startTime!).inMinutes;
+    if (claimTime == null) return 0;
+    final minutes = DateTime.now().difference(claimTime!).inMinutes;
     return double.parse((minutes / 60.0).toStringAsFixed(1));
   }
 
@@ -223,7 +223,7 @@ class ProcessTaskItem {
       processQty: (task.assignedQty).toDouble(),
       length: parsedInfo['length'] ?? 0.0,
       status: task.status,
-      startTime: task.startTime,
+      claimTime: task.claimTime,
     );
   }
 }
@@ -351,7 +351,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         'process_code': '成组焊接', 'process_name': '槽道成组焊接',
         'worker_name': widget.userInfo.realName, 'worker_id': widget.userInfo.id,
         'plan_qty': 500, 'assigned_qty': 500, 'status': 2, 'unit': '米',
-        'start_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
+        'claim_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
       },
       // #2 A组：同 #1（预埋/外置不影响合并key）
       {
@@ -360,7 +360,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         'process_code': '成组焊接', 'process_name': '槽道成组焊接',
         'worker_name': widget.userInfo.realName, 'worker_id': widget.userInfo.id,
         'plan_qty': 300, 'assigned_qty': 300, 'status': 2, 'unit': '米',
-        'start_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
+        'claim_time': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'remark': '钢管',
       },
       // #3 B组：三根（groupType不同）
       {
@@ -1106,9 +1106,9 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     // 计算总工时：提报时间 - 最早的开始时间，精确到小时保留一位小数
     DateTime? earliestStart;
     for (var task in reportableTasks) {
-      if (task.startTime != null) {
-        if (earliestStart == null || task.startTime!.isBefore(earliestStart)) {
-          earliestStart = task.startTime;
+      if (task.claimTime != null) {
+        if (earliestStart == null || task.claimTime!.isBefore(earliestStart)) {
+          earliestStart = task.claimTime;
         }
       }
     }

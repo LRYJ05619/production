@@ -45,7 +45,6 @@ extension UserRoleExtension on UserRole {
     }
   }
 
-  /// 从用户名判断角色（备用）
   static UserRole fromUsername(String username) {
     if (username.contains('班长')) return UserRole.leader;
     if (username.contains('质检')) return UserRole.inspector;
@@ -55,7 +54,6 @@ extension UserRoleExtension on UserRole {
 
 // ==================== 任务状态枚举（API状态码） ====================
 enum ApiTaskStatus {
-  //unassigned(0, '待分配'),
   assigned(1, '已分配'),
   claimed(2, '已领取'),
   pendingApproval(3, '待审批'),
@@ -72,14 +70,11 @@ enum ApiTaskStatus {
   static ApiTaskStatus fromCode(int code) {
     return ApiTaskStatus.values.firstWhere(
           (s) => s.code == code,
-      //orElse: () => ApiTaskStatus.unassigned,
     );
   }
 
   Color get color {
     switch (this) {
-      //case ApiTaskStatus.unassigned:
-      //  return Colors.grey;
       case ApiTaskStatus.assigned:
         return Colors.blue;
       case ApiTaskStatus.claimed:
@@ -98,7 +93,6 @@ enum ApiTaskStatus {
     }
   }
 
-  /// 是否可以被员工操作
   bool get canWorkerOperate {
     return this == ApiTaskStatus.assigned ||
         this == ApiTaskStatus.leaderReject ||
@@ -106,12 +100,10 @@ enum ApiTaskStatus {
         this == ApiTaskStatus.qcReject;
   }
 
-  /// 是否可以被质检操作
   bool get canQcOperate {
     return this == ApiTaskStatus.pendingQc;
   }
 
-  /// 是否可以被班长操作
   bool get canLeaderOperate {
     return this == ApiTaskStatus.pendingApproval || this == ApiTaskStatus.resubmit;
   }
@@ -264,17 +256,17 @@ class PlanInfo {
 // ==================== 计划外工作信息模型 ====================
 class ExtraWorkInfo {
   final int id;
-  final String workNo;           // 编号，格式EW...
-  final String workContent;      // 工作内容
-  final String location;         // 工作地点
-  final String workDescription;  // 工作说明
-  final double planHours;        // 计划总工时
-  final DateTime? planFinishTime; // 要求完成时间
-  final double assignedHours;    // 已分配工时
-  final int status;              // 状态：0-待分配,1-已分配,4-待审批,5-已完成
-  final int creatorId;           // 创建人ID
-  final String creatorName;      // 创建人姓名
-  final String remark;           // 备注信息
+  final String workNo;
+  final String workContent;
+  final String location;
+  final String workDescription;
+  final double planHours;
+  final DateTime? planFinishTime;
+  final double assignedHours;
+  final int status;
+  final int creatorId;
+  final String creatorName;
+  final String remark;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -341,14 +333,13 @@ class ExtraWorkInfo {
 class ExtraWorkData {
   final int id;
   final String taskNo;
-  final int taskType;  // 固定为2
+  final int taskType;
   final int workerId;
   final SimpleUserInfo? worker;
   final int teamId;
   final int? extraWorkId;
-  final ExtraWorkInfo? extraWork;  // 关联的计划外工作信息
+  final ExtraWorkInfo? extraWork;
 
-  // 任务字段（计划外工作直接存储在task上）
   final double planHours;
   final double actualHours;
   final String workSummary;
@@ -357,24 +348,19 @@ class ExtraWorkData {
   final String workDescription;
   final DateTime? planFinishTime;
 
-  // 报工数据
   final double workHours;
 
-  // 审批信息
   final int? approverId;
   final SimpleUserInfo? approver;
   final DateTime? approvalTime;
   final String approvalNote;
   final String rejectReason;
 
-  // 状态
   final ApiTaskStatus status;
 
-  // 时间戳
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  // 列表数据直接提供的字段
   final String? _workerName;
 
   ExtraWorkData({
@@ -405,7 +391,6 @@ class ExtraWorkData {
     String? workerName,
   }) : _workerName = workerName;
 
-  /// 从详情接口创建（包含extra_work关联对象）
   factory ExtraWorkData.fromJson(Map<String, dynamic> json) {
     return ExtraWorkData(
       id: json['id'] ?? 0,
@@ -439,7 +424,6 @@ class ExtraWorkData {
     );
   }
 
-  /// 从列表接口创建（简化数据）
   factory ExtraWorkData.fromListJson(Map<String, dynamic> json) {
     return ExtraWorkData(
       id: json['id'] ?? 0,
@@ -472,11 +456,9 @@ class ExtraWorkData {
     );
   }
 
-  // 便捷getter
   String get workerName => _workerName ?? worker?.realName ?? '';
   String get approverName => approver?.realName ?? '';
 
-  // 优先从extraWork获取，否则从task本身获取
   String get displayWorkNo => extraWork?.workNo ?? taskNo;
   String get displayWorkContent => extraWork?.workContent ?? workContent;
   String get displayLocation => extraWork?.location ?? location;
@@ -489,24 +471,20 @@ class ExtraWorkData {
   String get statusText => status.text;
   Color get statusColor => status.color;
 
-  /// 判断指定用户是否可以操作此任务
   bool canOperate(UserInfo user) {
     switch (user.userRole) {
       case UserRole.worker:
-      // 员工：任务分配给自己，且状态允许
         return workerId == user.id && status.canWorkerOperate;
       case UserRole.inspector:
-      // 质检：状态为待质检
         return false;
       case UserRole.leader:
-      // 班长：状态为待审批或执行人为自己
         return status.canLeaderOperate ||
             (workerId == user.id && status.canWorkerOperate);
     }
   }
 }
 
-// ==================== 简单用户信息（关联查询用） ====================
+// ==================== 简单用户信息 ====================
 class SimpleUserInfo {
   final int id;
   final String username;
@@ -575,9 +553,8 @@ class ApiTaskData {
   final bool freeReport;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final DateTime? startTime;
+  final DateTime? claimTime;
 
-  // 列表数据直接提供的字段（不通过plan获取）
   final String? _orderNo;
   final String? _productCode;
   final String? _productName;
@@ -632,7 +609,7 @@ class ApiTaskData {
     required this.freeReport,
     required this.createdAt,
     required this.updatedAt,
-    this.startTime,
+    this.claimTime,
     String? orderNo,
     String? productCode,
     String? productName,
@@ -652,7 +629,6 @@ class ApiTaskData {
         _specModel = specModel,
         _remark = remark;
 
-  /// 从详情接口创建
   factory ApiTaskData.fromJson(Map<String, dynamic> json) {
     return ApiTaskData(
       id: json['id'] ?? 0,
@@ -702,12 +678,11 @@ class ApiTaskData {
       freeReport: json['free_report'] ?? false,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      startTime: json['start_time'] != null ? DateTime.tryParse(json['start_time']) : null,
+      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
       remark: json['remark'],
     );
   }
 
-  /// 从列表接口创建（简化数据）
   factory ApiTaskData.fromListJson(Map<String, dynamic> json) {
     return ApiTaskData(
       id: json['id'] ?? 0,
@@ -741,7 +716,6 @@ class ApiTaskData {
       freeReport: false,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      // 列表直接提供的字段
       orderNo: json['order_no'],
       productCode: json['product_code'],
       productName: json['product_name'],
@@ -751,12 +725,11 @@ class ApiTaskData {
       assignedQty: json['assigned_qty']?.toInt(),
       workerName: json['worker_name'],
       specModel: json['spec_model'],
-      startTime: json['start_time'] != null ? DateTime.tryParse(json['start_time']) : null,
+      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
       remark: json['remark'],
     );
   }
 
-  // 便捷getter - 优先从列表数据获取，否则从plan获取
   String get orderNo => _orderNo ?? plan?.orderNo ?? '';
   String get productCode => _productCode ?? plan?.productCode ?? '';
   String get productName => _productName ?? plan?.productName ?? '';
@@ -767,34 +740,26 @@ class ApiTaskData {
   String get unit => plan?.unit ?? '个';
   String get remark => _remark ?? plan?.remark ?? '';
 
-  // 便捷getter - 从关联用户获取
   String get workerName => _workerName ?? worker?.realName ?? '';
   String get producerName => producer?.realName ?? '';
   String get qcUserName => qcUser?.realName ?? '';
   String get approverName => approver?.realName ?? '';
 
-  /// 是否是计划外任务
   bool get isExtraWork => taskType == 2;
 
-  /// 判断指定用户是否可以操作此任务
   bool canOperate(UserInfo user) {
     switch (user.userRole) {
       case UserRole.worker:
-      // 员工：任务分配给自己，且状态允许
         return workerId == user.id && status.canWorkerOperate;
       case UserRole.inspector:
-      // 质检：状态为待质检
         return status.canQcOperate;
       case UserRole.leader:
-      // 班长：状态为待审批或执行人为自己
         return status.canLeaderOperate ||
             (workerId == user.id && status.canWorkerOperate);
     }
   }
 
-  /// 判断员工是否需要填写报工表单
   bool needWorkerForm(int userId) {
-    // 已领取、班长发回、质检发回状态，且是自己的任务
     return workerId == userId &&
         (status == ApiTaskStatus.claimed ||
             status == ApiTaskStatus.leaderReject ||

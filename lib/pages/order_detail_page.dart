@@ -119,8 +119,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
   /// 自动计算实际工时（提报时间 - 开始时间，精确到小时保留一位小数）
   double _calcWorkHours() {
-    if (_task.startTime == null) return 0;
-    final minutes = DateTime.now().difference(_task.startTime!).inMinutes;
+    if (_task.claimTime == null) return 0;
+    final minutes = DateTime.now().difference(_task.claimTime!).inMinutes;
     return double.parse((minutes / 60.0).toStringAsFixed(1));
   }
 
