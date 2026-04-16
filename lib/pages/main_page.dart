@@ -160,6 +160,8 @@ class _MainPageState extends State<MainPage> {
                 style: TextStyle(fontSize: 11, color: widget.userInfo.userRole.color),
               ),
             ),
+            const Spacer(),
+            Text('v0.9.18', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
           ],
         ),
         actions: [
@@ -282,16 +284,7 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
     if (widget.userInfo.userRole == UserRole.worker) {
       filter = filter.copyWith(workerId: widget.userInfo.id);
     }
-    // 默认筛选当天任务
-    if (filter.startTime == null && filter.endTime == null) {
-      final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day);
-      final todayEnd = todayStart.add(const Duration(days: 1));
-      filter = filter.copyWith(
-        startTime: todayStart.toIso8601String(),
-        endTime: todayEnd.toIso8601String(),
-      );
-    }
+    // 日期筛选由 api_service 默认处理（三天内）
     return filter;
   }
 

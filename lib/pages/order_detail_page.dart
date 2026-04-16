@@ -117,11 +117,19 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     return _task.unit;
   }
 
-  /// 自动计算实际工时（提报时间 - 开始时间，精确到小时保留一位小数）
+  /// 自动计算实际工时（提报时间 - 领取时间，精确到小时保留一位小数）
+  /// 如果12点前领取、13点后报工，扣除1小时午休
   double _calcWorkHours() {
     if (_task.claimTime == null) return 0;
-    final minutes = DateTime.now().difference(_task.claimTime!).inMinutes;
-    return double.parse((minutes / 60.0).toStringAsFixed(1));
+    final now = DateTime.now();
+    final claim = _task.claimTime!;
+    double hours = now.difference(claim).inMinutes / 60.0;
+    // 午休扣除：12点前领取 且 13点后报工
+    if (claim.hour < 12 && now.hour >= 13) {
+      hours -= 1.0;
+    }
+    if (hours < 0) hours = 0;
+    return double.parse(hours.toStringAsFixed(1));
   }
 
   /// 将用户输入的数量（根）转为接口需要的数量（米）

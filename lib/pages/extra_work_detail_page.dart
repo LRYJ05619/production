@@ -21,7 +21,6 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   final ApiService _apiService = ApiService();
   bool _isSubmitting = false;
 
-  late TextEditingController _workHoursController;
   late TextEditingController _workSummaryController;
   late TextEditingController _approvalNoteController;
 
@@ -38,18 +37,29 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
             _work.status == ApiTaskStatus.claimed);
   }
 
+  /// 自动计算实际工时（提报时间 - 领取时间）
+  /// 如果12点前领取、13点后报工，扣除1小时午休
+  double _calcWorkHours() {
+    if (_work.claimTime == null) return 0;
+    final now = DateTime.now();
+    final claim = _work.claimTime!;
+    double hours = now.difference(claim).inMinutes / 60.0;
+    if (claim.hour < 12 && now.hour >= 13) {
+      hours -= 1.0;
+    }
+    if (hours < 0) hours = 0;
+    return double.parse(hours.toStringAsFixed(1));
+  }
+
   @override
   void initState() {
     super.initState();
-    _workHoursController = TextEditingController(
-        text: _work.workHours > 0 ? '${_work.workHours}' : '');
     _workSummaryController = TextEditingController(text: _work.workSummary);
     _approvalNoteController = TextEditingController(text: _work.approvalNote);
   }
 
   @override
   void dispose() {
-    _workHoursController.dispose();
     _workSummaryController.dispose();
     _approvalNoteController.dispose();
     super.dispose();
@@ -170,7 +180,6 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
       return [
         const Divider(height: 32),
         _buildSectionTitle('完工报工'),
-        _buildEditRowSuffix('实 际 工 时:', _workHoursController, '小时'),
         const SizedBox(height: 12),
         const Text('工作小结:', style: TextStyle(fontSize: 14)),
         const SizedBox(height: 8),
@@ -320,11 +329,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   }
 
   Future<void> _handleReport() async {
-    final workHours = double.tryParse(_workHoursController.text) ?? 0;
-    if (workHours <= 0) {
-      _showError('请输入实际工时');
-      return;
-    }
+    // 自动计算实际工时（提报时间 - 领取时间，含午休扣除）
+    final workHours = _calcWorkHours();
 
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitReport(

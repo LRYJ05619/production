@@ -201,11 +201,18 @@ class ProcessTaskItem {
     return processQty;
   }
 
-  /// 自动计算实际工时（提报时间 - 开始时间）
+  /// 自动计算实际工时（提报时间 - 领取时间）
+  /// 如果12点前领取、13点后报工，扣除1小时午休
   double calcWorkHours() {
     if (claimTime == null) return 0;
-    final minutes = DateTime.now().difference(claimTime!).inMinutes;
-    return double.parse((minutes / 60.0).toStringAsFixed(1));
+    final now = DateTime.now();
+    double hours = now.difference(claimTime!).inMinutes / 60.0;
+    // 午休扣除
+    if (claimTime!.hour < 12 && now.hour >= 13) {
+      hours -= 1.0;
+    }
+    if (hours < 0) hours = 0;
+    return double.parse(hours.toStringAsFixed(1));
   }
 
   factory ProcessTaskItem.fromApiTask(ApiTaskData task, Map<String, dynamic> parsedInfo) {
@@ -1103,7 +1110,8 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
     final List<Map<String, dynamic>> items = [];
 
-    // 计算总工时：提报时间 - 最早的开始时间，精确到小时保留一位小数
+    // 计算总工时：提报时间 - 最早的领取时间，精确到小时保留一位小数
+    // 如果12点前领取、13点后报工，扣除1小时午休
     DateTime? earliestStart;
     for (var task in reportableTasks) {
       if (task.claimTime != null) {
@@ -1112,9 +1120,14 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         }
       }
     }
-    final double totalWorkHours = earliestStart != null
-        ? double.parse((DateTime.now().difference(earliestStart).inMinutes / 60.0).toStringAsFixed(1))
-        : 0;
+    final now = DateTime.now();
+    double totalHoursRaw = earliestStart != null
+        ? now.difference(earliestStart).inMinutes / 60.0 : 0;
+    if (earliestStart != null && earliestStart.hour < 12 && now.hour >= 13) {
+      totalHoursRaw -= 1.0;
+    }
+    if (totalHoursRaw < 0) totalHoursRaw = 0;
+    final double totalWorkHours = double.parse(totalHoursRaw.toStringAsFixed(1));
 
     // 收集有效任务（有填写数量的）及其派工量
     final validTasks = <ProcessTaskItem>[];

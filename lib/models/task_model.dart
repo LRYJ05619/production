@@ -30,7 +30,6 @@ extension UserRoleExtension on UserRole {
     }
   }
 
-  /// 从API的role字符串转换
   static UserRole fromApiRole(String role) {
     switch (role) {
       case 'super_admin':
@@ -360,6 +359,7 @@ class ExtraWorkData {
 
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? claimTime;
 
   final String? _workerName;
 
@@ -388,6 +388,7 @@ class ExtraWorkData {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.claimTime,
     String? workerName,
   }) : _workerName = workerName;
 
@@ -421,6 +422,7 @@ class ExtraWorkData {
       status: ApiTaskStatus.fromCode(json['status'] ?? 0),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
+      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
     );
   }
 
@@ -452,6 +454,7 @@ class ExtraWorkData {
       status: ApiTaskStatus.fromCode(json['status'] ?? 0),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
+      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
       workerName: json['worker_name'],
     );
   }
