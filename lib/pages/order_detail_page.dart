@@ -542,7 +542,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final displayAssigned =
     _convertToDisplayQty(_task.assignedQty.toDouble());
 
-    if (inputQualified == 0) {
+    if (inputQualified > (1.1 * displayAssigned) || inputQualified == 0) {
       _showError('完成数量异常，请重新填写');
       return;
     }

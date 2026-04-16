@@ -161,7 +161,7 @@ class _MainPageState extends State<MainPage> {
               ),
             ),
             const Spacer(),
-            Text('v0.9.19', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+            Text('v0.9.18', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
           ],
         ),
         actions: [
