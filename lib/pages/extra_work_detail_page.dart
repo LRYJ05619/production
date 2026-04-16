@@ -42,7 +42,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   double _calcWorkHours() {
     if (_work.claimTime == null) return 0;
     final now = DateTime.now();
-    final claim = _work.claimTime!;
+    final claim = _work.claimTime!.toLocal();
     double hours = now.difference(claim).inMinutes / 60.0;
     if (claim.hour < 12 && now.hour >= 13) {
       hours -= 1.0;

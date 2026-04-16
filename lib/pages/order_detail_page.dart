@@ -122,7 +122,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   double _calcWorkHours() {
     if (_task.claimTime == null) return 0;
     final now = DateTime.now();
-    final claim = _task.claimTime!;
+    final claim = _task.claimTime!.toLocal();
     double hours = now.difference(claim).inMinutes / 60.0;
     // 午休扣除：12点前领取 且 13点后报工
     if (claim.hour < 12 && now.hour >= 13) {

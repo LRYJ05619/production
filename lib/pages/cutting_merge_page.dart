@@ -1116,7 +1116,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     for (var task in reportableTasks) {
       if (task.claimTime != null) {
         if (earliestStart == null || task.claimTime!.isBefore(earliestStart)) {
-          earliestStart = task.claimTime;
+          earliestStart = task.claimTime?.toLocal();
         }
       }
     }
