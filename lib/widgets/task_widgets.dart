@@ -86,7 +86,30 @@ class TaskCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
+
+                // 规格型号
+                if (task.specModel.isNotEmpty)
+                  Text(
+                    task.specModel,
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                const SizedBox(height: 6),
+
+                // 分配时间
+                Row(
+                  children: [
+                    Icon(Icons.access_time, size: 14, color: Colors.grey[400]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '分配时间: ${_formatDateTime(task.createdAt)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
 
                 // 详细信息
                 Row(
@@ -168,6 +191,10 @@ class TaskCard extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -258,7 +285,20 @@ class ExtraWorkCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+
+                // 分配时间
+                Row(
+                  children: [
+                    Icon(Icons.access_time, size: 14, color: Colors.grey[400]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '分配时间: ${_formatDateTime(work.createdAt)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
 
                 // 详细信息
                 Row(
@@ -273,7 +313,7 @@ class ExtraWorkCard extends StatelessWidget {
                   children: [
                     _buildInfoItem(Icons.person, work.workerName),
                     const SizedBox(width: 16),
-                    _buildInfoItem(Icons.schedule, _formatDateTime(work.planFinishTime)),
+                    _buildInfoItem(Icons.schedule, _formatDateTimeNullable(work.planFinishTime)),
                   ],
                 ),
               ],
@@ -302,8 +342,12 @@ class ExtraWorkCard extends StatelessWidget {
     );
   }
 
-  String _formatDateTime(DateTime? dt) {
+  String _formatDateTime(DateTime dt) {
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDateTimeNullable(DateTime? dt) {
     if (dt == null) return '-';
-    return '${dt.month}/${dt.day} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

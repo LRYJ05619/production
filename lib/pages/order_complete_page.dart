@@ -46,8 +46,6 @@ class OrderCompletePage extends StatelessWidget {
             _buildInfoRow('自 检 合 格:', '${task.qualifiedQty.toInt()}'),
             _buildInfoRow('工 废 数 量:', '${task.workWasteQty.toInt()}'),
             _buildInfoRow('料 废 数 量:', '${task.materialWasteQty.toInt()}'),
-            _buildInfoRow('返 修 数 量:', '${task.repairQty.toInt()}'),
-            _buildInfoRow('损 耗 数 量:', '${task.lossQty.toInt()}'),
             _buildInfoRow('实 际 工 时:', '${task.workHours}小时'),
             if (task.workSummary.isNotEmpty)
               _buildInfoRow('工 作 摘 要:', task.workSummary),

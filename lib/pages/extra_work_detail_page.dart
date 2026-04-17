@@ -42,7 +42,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   double _calcWorkHours() {
     if (_work.claimTime == null) return 0;
     final now = DateTime.now();
-    final claim = _work.claimTime!.toLocal();
+    final claim = _work.claimTime!;
     double hours = now.difference(claim).inMinutes / 60.0;
     if (claim.hour < 12 && now.hour >= 13) {
       hours -= 1.0;
@@ -130,11 +130,12 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
         _buildInfoRow('工 作 内 容:', _work.displayWorkContent),
         _buildInfoRow('工 作 地 点:', _work.displayLocation),
         _buildInfoRow('工 作 说 明:', _work.displayWorkDescription),
+        _buildInfoRow('分 配 时 间:', _formatDateTime(_work.createdAt)),
         _buildInfoRow('计 划 工 时:', '${_work.displayPlanHours}小时'),
-        _buildInfoRow('结 束 时 间:', _formatDateTime(_work.displayPlanFinishTime)),
-        _buildInfoRow('操  作  者:', _work.workerName),
+        _buildInfoRow('计 划 完 成:', _formatDateTime(_work.displayPlanFinishTime)),
+        _buildInfoRow('操   作   者:', _work.workerName),
         if (_work.creatorName.isNotEmpty)
-          _buildInfoRow('创  建  人:', _work.creatorName),
+          _buildInfoRow('创   建   人:', _work.creatorName),
         if (_work.remark.isNotEmpty)
           _buildInfoRow('备      注:', _work.remark),
         ..._buildRoleContent(),

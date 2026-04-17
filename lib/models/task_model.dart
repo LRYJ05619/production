@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 
+/// 统一解析API返回的时间字符串，确保转为本地时间
+/// API返回带+08:00时区的时间，DateTime.tryParse会存为UTC，
+/// 调用.toLocal()转回本地时间，保证.hour等属性正确
+DateTime? parseLocalTime(dynamic timeStr) {
+  if (timeStr == null || timeStr is! String || timeStr.isEmpty) return null;
+  return DateTime.tryParse(timeStr)?.toLocal();
+}
+
 // ==================== 用户角色枚举 ====================
 enum UserRole {
   worker,    // 员工：填报实际数据
@@ -124,7 +132,7 @@ class LoginResponse {
     return LoginResponse(
       token: json['token'] ?? '',
       user: UserInfo.fromJson(json['user'] ?? {}),
-      expiresAt: DateTime.tryParse(json['expires_at'] ?? '') ?? DateTime.now().add(const Duration(days: 1)),
+      expiresAt: parseLocalTime(json['expires_at']) ?? DateTime.now().add(const Duration(days: 1)),
     );
   }
 }
@@ -233,12 +241,8 @@ class PlanInfo {
       isOutsource: json['is_outsource'] ?? 'N',
       planQty: (json['plan_qty'] ?? 0).toInt(),
       unit: json['unit'] ?? '个',
-      planStartTime: json['plan_start_time'] != null
-          ? DateTime.tryParse(json['plan_start_time'])
-          : null,
-      planEndTime: json['plan_end_time'] != null
-          ? DateTime.tryParse(json['plan_end_time'])
-          : null,
+      planStartTime: parseLocalTime(json['plan_start_time']),
+      planEndTime: parseLocalTime(json['plan_end_time']),
       assignedQty: (json['assigned_qty'] ?? 0).toDouble(),
       completedQty: (json['completed_qty'] ?? 0).toDouble(),
       totalWasteQty: (json['total_waste_qty'] ?? 0).toDouble(),
@@ -294,16 +298,14 @@ class ExtraWorkInfo {
       location: json['location'] ?? '',
       workDescription: json['work_description'] ?? '',
       planHours: (json['plan_hours'] ?? 0).toDouble(),
-      planFinishTime: json['plan_finish_time'] != null
-          ? DateTime.tryParse(json['plan_finish_time'])
-          : null,
+      planFinishTime: parseLocalTime(json['plan_finish_time']),
       assignedHours: (json['assigned_hours'] ?? 0).toDouble(),
       status: json['status'] ?? 0,
       creatorId: json['creator_id'] ?? 0,
       creatorName: json['creator_name'] ?? '',
       remark: json['remark'] ?? '',
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
+      createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
     );
   }
 
@@ -408,21 +410,17 @@ class ExtraWorkData {
       location: json['location'] ?? '',
       workContent: json['work_content'] ?? '',
       workDescription: json['work_description'] ?? '',
-      planFinishTime: json['plan_finish_time'] != null
-          ? DateTime.tryParse(json['plan_finish_time'])
-          : null,
+      planFinishTime: parseLocalTime(json['plan_finish_time']),
       workHours: (json['work_hours'] ?? 0).toDouble(),
       approverId: json['approver_id'],
       approver: json['approver'] != null ? SimpleUserInfo.fromJson(json['approver']) : null,
-      approvalTime: json['approval_time'] != null
-          ? DateTime.tryParse(json['approval_time'])
-          : null,
+      approvalTime: parseLocalTime(json['approval_time']),
       approvalNote: json['approval_note'] ?? '',
       rejectReason: json['reject_reason'] ?? '',
       status: ApiTaskStatus.fromCode(json['status'] ?? 0),
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
+      createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
+      claimTime: parseLocalTime(json['claim_time']),
     );
   }
 
@@ -442,9 +440,7 @@ class ExtraWorkData {
       location: json['location'] ?? '',
       workContent: json['work_content'] ?? '',
       workDescription: json['work_description'] ?? '',
-      planFinishTime: json['plan_finish_time'] != null
-          ? DateTime.tryParse(json['plan_finish_time'])
-          : null,
+      planFinishTime: parseLocalTime(json['plan_finish_time']),
       workHours: 0,
       approverId: null,
       approver: null,
@@ -452,9 +448,9 @@ class ExtraWorkData {
       approvalNote: '',
       rejectReason: '',
       status: ApiTaskStatus.fromCode(json['status'] ?? 0),
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
+      createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
+      claimTime: parseLocalTime(json['claim_time']),
       workerName: json['worker_name'],
     );
   }
@@ -649,9 +645,7 @@ class ApiTaskData {
       producerId: json['producer_id'],
       producer: json['producer'] != null ? SimpleUserInfo.fromJson(json['producer']) : null,
       assignedQty: (json['assigned_qty'] ?? 0).toInt(),
-      planFinishTime: json['plan_finish_time'] != null
-          ? DateTime.tryParse(json['plan_finish_time'])
-          : null,
+      planFinishTime: parseLocalTime(json['plan_finish_time']),
       completedQty: (json['completed_qty'] ?? 0).toDouble(),
       qualifiedQty: (json['qualified_qty'] ?? 0).toDouble(),
       workWasteQty: (json['work_waste_qty'] ?? 0).toDouble(),
@@ -664,24 +658,22 @@ class ApiTaskData {
       qcQualifiedQty: (json['qc_qualified_qty'] ?? 0).toDouble(),
       qcWasteQty: (json['qc_waste_qty'] ?? 0).toDouble(),
       qcOpinion: json['qc_opinion'] ?? '',
-      qcTime: json['qc_time'] != null ? DateTime.tryParse(json['qc_time']) : null,
+      qcTime: parseLocalTime(json['qc_time']),
       approverId: json['approver_id'],
       approver: json['approver'] != null ? SimpleUserInfo.fromJson(json['approver']) : null,
-      approvalTime: json['approval_time'] != null
-          ? DateTime.tryParse(json['approval_time'])
-          : null,
+      approvalTime: parseLocalTime(json['approval_time']),
       approvalNote: json['approval_note'] ?? '',
       rejectReason: json['reject_reason'] ?? '',
       status: ApiTaskStatus.fromCode(json['status'] ?? 0),
       kingdeeNo: json['kingdee_no'] ?? '',
       reportStatus: json['report_status'] ?? 0,
       errorMsg: json['error_msg'] ?? '',
-      reportTime: json['report_time'] != null ? DateTime.tryParse(json['report_time']) : null,
+      reportTime: parseLocalTime(json['report_time']),
       isSettled: json['is_settled'] ?? false,
       freeReport: json['free_report'] ?? false,
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
+      createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
+      claimTime: parseLocalTime(json['claim_time']),
       remark: json['remark'],
     );
   }
@@ -717,8 +709,8 @@ class ApiTaskData {
       errorMsg: '',
       isSettled: false,
       freeReport: false,
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
+      createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
       orderNo: json['order_no'],
       productCode: json['product_code'],
       productName: json['product_name'],
@@ -728,7 +720,7 @@ class ApiTaskData {
       assignedQty: json['assigned_qty']?.toInt(),
       workerName: json['worker_name'],
       specModel: json['spec_model'],
-      claimTime: json['claim_time'] != null ? DateTime.tryParse(json['claim_time']) : null,
+      claimTime: parseLocalTime(json['claim_time']),
       remark: json['remark'],
     );
   }

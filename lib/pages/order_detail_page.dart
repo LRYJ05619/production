@@ -122,7 +122,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   double _calcWorkHours() {
     if (_task.claimTime == null) return 0;
     final now = DateTime.now();
-    final claim = _task.claimTime!.toLocal();
+    final claim = _task.claimTime!;
     double hours = now.difference(claim).inMinutes / 60.0;
     // 午休扣除：12点前领取 且 13点后报工
     if (claim.hour < 12 && now.hour >= 13) {
@@ -246,13 +246,16 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         _buildInfoRow('产 品 编 码:', _task.productCode),
         _buildInfoRow('产 品 名 称:', _task.productName),
         _buildInfoRow('规 格 型 号:', _task.specModel),
-        _buildInfoRow('工      序:', _task.processName),
+        _buildInfoRow('分 配 时 间:', _formatDateTime(_task.createdAt)),
+        _buildInfoRow('工          序:', _task.processName),
         if (_task.remark.isNotEmpty)
           _buildInfoRow('连 接 物 体:', _task.remark),
         _buildInfoRow('计 划 数 量:',
             '${_isCaoDaoCutting ? displayAssignedQty.toInt() : _task.assignedQty.toInt()} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
-        _buildInfoRow('操  作  者:', _task.workerName),
+        if (_task.planFinishTime != null)
+          _buildInfoRow('计 划 完 成:', _formatDateTime(_task.planFinishTime)),
+        _buildInfoRow('操    作   者:', _task.workerName),
         // 非首道工序且非自由报工时显示可报工数量
         if (_needQtyLimit)
           _buildInfoRow('可报工数量:',
@@ -542,7 +545,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final displayAssigned =
     _convertToDisplayQty(_task.assignedQty.toDouble());
 
-    if (inputQualified == 0) {
+    if (inputQualified > (1.1 * displayAssigned) || inputQualified == 0) {
       _showError('完成数量异常，请重新填写');
       return;
     }
