@@ -541,12 +541,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final inputRepair = double.tryParse(_repairQtyController.text) ?? 0;
     final inputLoss = double.tryParse(_lossQtyController.text) ?? 0;
 
-    // 显示单位下的计划数量
-    final displayAssigned =
-    _convertToDisplayQty(_task.assignedQty.toDouble());
-
-    if (inputQualified > (1.1 * displayAssigned) || inputQualified == 0) {
-      _showError('完成数量异常，请重新填写');
+    if (inputQualified == 0) {
+      _showError('完成数量不能为0');
       return;
     }
 
