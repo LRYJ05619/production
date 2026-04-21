@@ -27,7 +27,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   late TextEditingController _repairQtyController;
   late TextEditingController _lossQtyController;
   late TextEditingController _qcQualifiedQtyController;
-  late TextEditingController _qcWasteQtyController;
+  late TextEditingController _qcWorkWasteQtyController;
+  late TextEditingController _qcMaterialWasteQtyController;
   late TextEditingController _qcOpinionController;
   late TextEditingController _approvalNoteController;
 
@@ -158,7 +159,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final displayRepair = _convertToDisplayQty(_task.repairQty);
     final displayLoss = _convertToDisplayQty(_task.lossQty);
     final displayQcQualified = _convertToDisplayQty(_task.qcQualifiedQty);
-    final displayQcWaste = _convertToDisplayQty(_task.qcWasteQty);
 
     _qualifiedQtyController = TextEditingController(
         text: displayQualified > 0 ? '${displayQualified.toInt()}' : '');
@@ -174,8 +174,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         text: displayLoss > 0 ? '${displayLoss.toInt()}' : '');
     _qcQualifiedQtyController = TextEditingController(
         text: displayQcQualified > 0 ? '${displayQcQualified.toInt()}' : '');
-    _qcWasteQtyController = TextEditingController(
-        text: displayQcWaste > 0 ? '${displayQcWaste.toInt()}' : '');
+    _qcWorkWasteQtyController = TextEditingController();
+    _qcMaterialWasteQtyController = TextEditingController();
     _qcOpinionController = TextEditingController(text: _task.qcOpinion);
     _approvalNoteController = TextEditingController(text: _task.approvalNote);
   }
@@ -188,7 +188,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     _repairQtyController.dispose();
     _lossQtyController.dispose();
     _qcQualifiedQtyController.dispose();
-    _qcWasteQtyController.dispose();
+    _qcWorkWasteQtyController.dispose();
+    _qcMaterialWasteQtyController.dispose();
     _qcOpinionController.dispose();
     _approvalNoteController.dispose();
     super.dispose();
@@ -376,7 +377,9 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         _buildSectionTitle('质检填报'),
         _buildEditRow('质检合格数:', _qcQualifiedQtyController,
             suffix: _displayUnit),
-        _buildEditRow('质检废品数:', _qcWasteQtyController,
+        _buildEditRow('质检工废数:', _qcWorkWasteQtyController,
+            suffix: _displayUnit),
+        _buildEditRow('质检料废数:', _qcMaterialWasteQtyController,
             suffix: _displayUnit),
         const SizedBox(height: 12),
         const Text('质检意见:', style: TextStyle(fontSize: 14)),
@@ -594,10 +597,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       }
       final inputQcQualified =
           double.tryParse(_qcQualifiedQtyController.text) ?? 0;
-      final inputQcWaste =
-          double.tryParse(_qcWasteQtyController.text) ?? 0;
-      final displayQualified = _convertToDisplayQty(_task.qualifiedQty);
-      if ((inputQcQualified + inputQcWaste) != displayQualified ||
+      final inputQcWorkWaste =
+          double.tryParse(_qcWorkWasteQtyController.text) ?? 0;
+      final inputQcMaterialWaste =
+          double.tryParse(_qcMaterialWasteQtyController.text) ?? 0;
+      // 可提报总数量 = 合格 + 工废 + 料废
+      final displayTotal = _convertToDisplayQty(
+          _task.qualifiedQty + _task.workWasteQty + _task.materialWasteQty);
+      if ((inputQcQualified + inputQcWorkWaste + inputQcMaterialWaste) != displayTotal ||
           inputQcQualified == 0) {
         _showError('总数量与提报数量不符，请重新填写');
         return;
@@ -607,15 +614,18 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     // 转换为接口数量
     final apiQcQualified = _convertToApiQty(
         double.tryParse(_qcQualifiedQtyController.text) ?? 0);
-    final apiQcWaste = _convertToApiQty(
-        double.tryParse(_qcWasteQtyController.text) ?? 0);
+    final apiQcWorkWaste = _convertToApiQty(
+        double.tryParse(_qcWorkWasteQtyController.text) ?? 0);
+    final apiQcMaterialWaste = _convertToApiQty(
+        double.tryParse(_qcMaterialWasteQtyController.text) ?? 0);
 
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitQcReview(
       taskId: _task.id,
       pass: pass,
       qcQualifiedQty: apiQcQualified,
-      qcWasteQty: apiQcWaste,
+      qcWorkWasteQty: apiQcWorkWaste,
+      qcMaterialWasteQty: apiQcMaterialWaste,
       qcOpinion: _qcOpinionController.text,
     );
     setState(() => _isSubmitting = false);

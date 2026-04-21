@@ -313,7 +313,8 @@ class ApiService {
     required int taskId,
     required bool pass,
     double? qcQualifiedQty,
-    double? qcWasteQty,
+    double? qcWorkWasteQty,
+    double? qcMaterialWasteQty,
     String? qcOpinion,
   }) async {
     try {
@@ -326,7 +327,8 @@ class ApiService {
         body: jsonEncode({
           'pass': pass,
           if (qcQualifiedQty != null) 'qc_qualified_qty': qcQualifiedQty,
-          if (qcWasteQty != null) 'qc_waste_qty': qcWasteQty,
+          if (qcWorkWasteQty != null) 'work_waste_qty': qcWorkWasteQty,
+          if (qcMaterialWasteQty != null) 'material_waste_qty': qcMaterialWasteQty,
           if (qcOpinion != null && qcOpinion.isNotEmpty)
             'qc_opinion': qcOpinion,
         }),
