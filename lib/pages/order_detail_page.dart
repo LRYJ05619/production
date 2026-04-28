@@ -257,6 +257,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         if (_task.planFinishTime != null)
           _buildInfoRow('计 划 完 成:', _formatDateTime(_task.planFinishTime)),
         _buildInfoRow('操    作   者:', _task.workerName),
+        if (_task.workType.isNotEmpty)
+          _buildInfoRow('计 工 方 式:', _task.workType),
+        if (_task.timeType.isNotEmpty)
+          _buildInfoRow('工 时 类 型:', _task.timeType),
+        if (_task.deviceName.isNotEmpty)
+          _buildInfoRow('设 备 名 称:', _task.deviceName),
+        if (_task.quota8h > 0)
+          _buildInfoRow('定 额 数 量:', '${_task.quota8h}'),
         // 非首道工序且非自由报工时显示可报工数量
         if (_needQtyLimit)
           _buildInfoRow('可报工数量:',

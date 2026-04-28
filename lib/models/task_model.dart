@@ -550,6 +550,10 @@ class ApiTaskData {
   final DateTime? reportTime;
   final bool isSettled;
   final bool freeReport;
+  final String workType;
+  final String timeType;
+  final String deviceName;
+  final double quota8h;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? claimTime;
@@ -606,6 +610,10 @@ class ApiTaskData {
     this.reportTime,
     required this.isSettled,
     required this.freeReport,
+    required this.workType,
+    required this.timeType,
+    required this.deviceName,
+    required this.quota8h,
     required this.createdAt,
     required this.updatedAt,
     this.claimTime,
@@ -671,6 +679,10 @@ class ApiTaskData {
       reportTime: parseLocalTime(json['report_time']),
       isSettled: json['is_settled'] ?? false,
       freeReport: json['free_report'] ?? false,
+      workType: json['work_type'] ?? '',
+      timeType: json['time_type'] ?? '',
+      deviceName: json['device_names'] ?? '',
+      quota8h: (json['quota_8h'] ?? 0).toDouble(),
       createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
       updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
       claimTime: parseLocalTime(json['claim_time']),
@@ -709,6 +721,10 @@ class ApiTaskData {
       errorMsg: '',
       isSettled: false,
       freeReport: false,
+      workType: '',
+      timeType: '',
+      deviceName: '',
+      quota8h: 0,
       createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
       updatedAt: parseLocalTime(json['updated_at']) ?? DateTime.now(),
       orderNo: json['order_no'],

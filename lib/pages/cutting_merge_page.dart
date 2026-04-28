@@ -684,18 +684,26 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   }
 
   Widget _buildEmptyView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Icon(Icons.inbox, size: 60, color: Colors.grey.shade300),
-          const SizedBox(height: 12),
-          const Text('暂无槽道任务数据', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-              onPressed: _loadData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('刷新')),
+          SizedBox(
+          height: MediaQuery.of(context).size.height * 0.6,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox, size: 60, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  const Text('暂无槽道任务数据', style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh), label: const Text('刷新')),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
