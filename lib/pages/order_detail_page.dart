@@ -48,21 +48,44 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             _task.status == ApiTaskStatus.claimed);
   }
 
-  /// 是否是槽道断料产品（仅断料工序需要单位转换：米↔根）
-  bool get _isCaoDaoCutting {
-    if (!_task.productName.contains('槽道')) return false;
-    // 判断是否是断料工序
+  /// 是否是槽道产品
+  bool get _isCaoDao => _task.productName.contains('槽道');
+
+  /// 是否是外置槽道产品（API单位为"组"）
+  bool get _isWaizhi => _task.productName.contains('外置');
+
+  /// 是否是断料工序
+  bool get _isCutting {
     final processName = _task.processName;
     final processCode = _task.plan?.processCode ?? '';
     return processName.contains('断料') || processCode == 'cutting';
   }
 
+  /// 非外置槽道断料（API单位为"米"，需要米↔根转换）
+  bool get _isCaoDaoCutting => _isCaoDao && !_isWaizhi && _isCutting;
+
+  /// 根系数：三根→3，双根→2，其他→1
+  int get _rootMultiplier {
+    final name = _task.productName;
+    final spec = _task.specModel;
+    if (name.contains('三根') || spec.contains('三根')) return 3;
+    if (name.contains('双根') || spec.contains('双根')) return 2;
+    return 1;
+  }
+
   /// 槽道单根长度（米），从规格型号解析
   /// 示例: "FPH 53/34-1900-Z（150）" → 1900mm → 1.9m
   double get _caoDaoLengthMeters {
-    if (!_isCaoDaoCutting) return 0;
+    if (!_isCaoDao) return 0;
     String spec = _task.specModel;
-    List<String> parts = spec.split('-');
+    // 先去掉括号内容，避免干扰分割
+    String normalized = spec
+        .replaceAll('（', '(')
+        .replaceAll('）', ')');
+    String withoutBrackets = normalized
+        .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+        .trim();
+    List<String> parts = withoutBrackets.split('-');
     if (parts.length > 1) {
       // 第二段为长度(mm)，提取纯数字
       String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
@@ -81,39 +104,34 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   /// 是否需要数量限制（非首道且非自由报工）
   bool get _needQtyLimit => _isNotFirstOper && !_isFreeReport;
 
-  /// 转入数量（米）
+  /// 转入数量（API原始单位：外置槽道为组，其他为米）
   double get _transferInQty => _task.plan?.transferInQty ?? 0;
 
-  /// 已完成数量（米）— 使用计划级别的已完成数量，与transferInQty同级
+  /// 已完成数量（API原始单位）
   double get _completedQty => _task.plan?.completedQty ?? 0;
 
-  /// 总废品数量（米）— 计划级别
+  /// 总废品数量（API原始单位）
   double get _totalWasteQty => _task.plan?.totalWasteQty ?? 0;
 
-  /// 可报工数量 = 转入数量 - 已完成数量 - 总废品数量（米）
+  /// 可报工数量（API原始单位）= 转入 - 已完成 - 总废品
   double get _remainingQty {
     final remaining = _transferInQty - _completedQty - _totalWasteQty;
     return remaining > 0 ? remaining : 0;
   }
 
-  /// 可报工数量转换为显示值（槽道时为根）
-  double get _remainingQtyDisplay {
-    if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
-      return _remainingQty / _caoDaoLengthMeters;
-    }
-    return _remainingQty;
-  }
+  /// 可报工数量（显示单位）
+  double get _remainingQtyDisplay => _convertToDisplayQty(_remainingQty);
 
-  /// 转入数量转换为根（槽道时）— 保留用于展示原始转入量
-  double get _transferInQtyDisplay {
-    if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
-      return _transferInQty / _caoDaoLengthMeters;
-    }
-    return _transferInQty;
-  }
+  /// 转入数量（显示单位）
+  double get _transferInQtyDisplay => _convertToDisplayQty(_transferInQty);
 
   /// 显示单位
+  /// - 外置槽道断料：根
+  /// - 外置槽道其他：米
+  /// - 非外置槽道断料：根
+  /// - 其他：原始单位
   String get _displayUnit {
+    if (_isCaoDao && _isWaizhi) return _isCutting ? '根' : '米';
     if (_isCaoDaoCutting) return '根';
     return _task.unit;
   }
@@ -133,16 +151,40 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     return double.parse(hours.toStringAsFixed(1));
   }
 
-  /// 将用户输入的数量（根）转为接口需要的数量（米）
+  /// 将用户输入的显示单位数量转为接口单位数量
+  /// - 外置断料：根 → 组 = qty / rootMultiplier
+  /// - 外置其他：米 → 组 = qty / lengthMeters / rootMultiplier
+  /// - 非外置断料：根 → 米 = qty * lengthMeters
+  /// - 其他：不转换
   double _convertToApiQty(double inputQty) {
+    if (_isCaoDao && _isWaizhi) {
+      if (_isCutting && _rootMultiplier > 0) {
+        return inputQty / _rootMultiplier;
+      }
+      if (!_isCutting && _rootMultiplier > 0 && _caoDaoLengthMeters > 0) {
+        return inputQty / _caoDaoLengthMeters / _rootMultiplier;
+      }
+    }
     if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
       return inputQty * _caoDaoLengthMeters;
     }
     return inputQty;
   }
 
-  /// 将接口数量（米）转为显示数量（根）
+  /// 将接口单位数量转为显示单位数量
+  /// - 外置断料：组 → 根 = qty * rootMultiplier
+  /// - 外置其他：组 → 米 = qty * rootMultiplier * lengthMeters
+  /// - 非外置断料：米 → 根 = qty / lengthMeters
+  /// - 其他：不转换
   double _convertToDisplayQty(double apiQty) {
+    if (_isCaoDao && _isWaizhi) {
+      if (_isCutting) {
+        return apiQty * _rootMultiplier;
+      }
+      if (!_isCutting && _caoDaoLengthMeters > 0) {
+        return apiQty * _rootMultiplier * _caoDaoLengthMeters;
+      }
+    }
     if (_isCaoDaoCutting && _caoDaoLengthMeters > 0) {
       return apiQty / _caoDaoLengthMeters;
     }
@@ -152,7 +194,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   void initState() {
     super.initState();
-    // 显示值：槽道产品转换为根
+    // 显示值：按单位转换规则转换
     final displayQualified = _convertToDisplayQty(_task.qualifiedQty);
     final displayWorkWaste = _convertToDisplayQty(_task.workWasteQty);
     final displayMaterialWaste = _convertToDisplayQty(_task.materialWasteQty);
@@ -161,19 +203,17 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final displayQcQualified = _convertToDisplayQty(_task.qcQualifiedQty);
 
     _qualifiedQtyController = TextEditingController(
-        text: displayQualified > 0 ? '${displayQualified.toInt()}' : '');
+        text: displayQualified > 0 ? _formatQty(displayQualified) : '');
     _workWasteQtyController = TextEditingController(
-        text: displayWorkWaste > 0 ? '${displayWorkWaste.toInt()}' : '');
+        text: displayWorkWaste > 0 ? _formatQty(displayWorkWaste) : '');
     _materialWasteQtyController = TextEditingController(
-        text: displayMaterialWaste > 0
-            ? '${displayMaterialWaste.toInt()}'
-            : '');
+        text: displayMaterialWaste > 0 ? _formatQty(displayMaterialWaste) : '');
     _repairQtyController = TextEditingController(
-        text: displayRepair > 0 ? '${displayRepair.toInt()}' : '');
+        text: displayRepair > 0 ? _formatQty(displayRepair) : '');
     _lossQtyController = TextEditingController(
-        text: displayLoss > 0 ? '${displayLoss.toInt()}' : '');
+        text: displayLoss > 0 ? _formatQty(displayLoss) : '');
     _qcQualifiedQtyController = TextEditingController(
-        text: displayQcQualified > 0 ? '${displayQcQualified.toInt()}' : '');
+        text: displayQcQualified > 0 ? _formatQty(displayQcQualified) : '');
     _qcWorkWasteQtyController = TextEditingController();
     _qcMaterialWasteQtyController = TextEditingController();
     _qcOpinionController = TextEditingController(text: _task.qcOpinion);
@@ -236,7 +276,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   }
 
   Widget _buildContent() {
-    // 计划数量显示值（槽道转根）
+    // 计划数量显示值（单位转换）
     final displayAssignedQty = _convertToDisplayQty(_task.assignedQty.toDouble());
 
     return Column(
@@ -252,7 +292,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         if (_task.remark.isNotEmpty)
           _buildInfoRow('连 接 物 体:', _task.remark),
         _buildInfoRow('计 划 数 量:',
-            '${_isCaoDaoCutting ? displayAssignedQty.toInt() : _task.assignedQty.toInt()} $_displayUnit'),
+            '${_formatQty(displayAssignedQty)} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
         if (_task.planFinishTime != null)
           _buildInfoRow('计 划 完 成:', _formatDateTime(_task.planFinishTime)),
@@ -268,7 +308,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         // 非首道工序且非自由报工时显示可报工数量
         if (_needQtyLimit)
           _buildInfoRow('可报工数量:',
-              '${_remainingQtyDisplay.toInt()} $_displayUnit'),
+              '${_formatQty(_remainingQtyDisplay)} $_displayUnit'),
         ..._buildRoleContent(),
       ],
     );
@@ -331,7 +371,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               Expanded(
                 child: Text(
                   '非首道工序，提报总数量不能超过可报工数量 '
-                      '${_remainingQtyDisplay.toInt()} $_displayUnit',
+                      '${_formatQty(_remainingQtyDisplay)} $_displayUnit',
                   style: TextStyle(
                       fontSize: 12, color: Colors.amber.shade800),
                 ),
@@ -357,12 +397,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       const Divider(height: 32),
       _buildSectionTitle('报工数据'),
       _buildInfoRow('完 成 数 量:',
-          '${_convertToDisplayQty(_task.qualifiedQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.qualifiedQty))} $_displayUnit'),
       _buildInfoRow('实 际 工 时:', '${_task.workHours}小时'),
       _buildInfoRow('工 废 数 量:',
-          '${_convertToDisplayQty(_task.workWasteQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.workWasteQty))} $_displayUnit'),
       _buildInfoRow('料 废 数 量:',
-          '${_convertToDisplayQty(_task.materialWasteQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.materialWasteQty))} $_displayUnit'),
     ];
   }
 
@@ -371,12 +411,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       const Divider(height: 32),
       _buildSectionTitle('员工报工'),
       _buildInfoRow('完 成 数 量:',
-          '${_convertToDisplayQty(_task.qualifiedQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.qualifiedQty))} $_displayUnit'),
       _buildInfoRow('实 际 工 时:', '${_task.workHours}小时'),
       _buildInfoRow('工 废 数 量:',
-          '${_convertToDisplayQty(_task.workWasteQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.workWasteQty))} $_displayUnit'),
       _buildInfoRow('料 废 数 量:',
-          '${_convertToDisplayQty(_task.materialWasteQty).toInt()} $_displayUnit'),
+          '${_formatQty(_convertToDisplayQty(_task.materialWasteQty))} $_displayUnit'),
     ];
 
     if (_task.status.canQcOperate) {
@@ -407,12 +447,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         const Divider(height: 32),
         _buildSectionTitle('员工报工'),
         _buildInfoRow('完 成 数 量:',
-            '${_convertToDisplayQty(_task.qualifiedQty).toInt()} $_displayUnit'),
+            '${_formatQty(_convertToDisplayQty(_task.qualifiedQty))} $_displayUnit'),
         _buildInfoRow('实 际 工 时:', '${_task.workHours}小时'),
         _buildInfoRow('工 废 数 量:',
-            '${_convertToDisplayQty(_task.workWasteQty).toInt()} $_displayUnit'),
+            '${_formatQty(_convertToDisplayQty(_task.workWasteQty))} $_displayUnit'),
         _buildInfoRow('料 废 数 量:',
-            '${_convertToDisplayQty(_task.materialWasteQty).toInt()} $_displayUnit'),
+            '${_formatQty(_convertToDisplayQty(_task.materialWasteQty))} $_displayUnit'),
       ]);
     }
 
@@ -566,7 +606,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           inputQualified + inputWorkWaste + inputMaterialWaste;
       if (totalInput > _remainingQtyDisplay) {
         _showError(
-            '可报工数量不足，提报总数(${totalInput.toInt()})超过可报工数量(${_remainingQtyDisplay.toInt()})');
+            '可报工数量不足，提报总数(${_formatQty(totalInput)})超过可报工数量(${_formatQty(_remainingQtyDisplay)})');
         return;
       }
     }
@@ -719,6 +759,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
   Widget _buildEditRow(String label, TextEditingController ctrl,
       {String suffix = ''}) {
+    // 米单位允许小数输入
+    final keyboardType = suffix == '米'
+        ? const TextInputType.numberWithOptions(decimal: true)
+        : TextInputType.number;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
@@ -734,7 +778,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                     border: Border.all(color: Colors.grey[300]!)),
                 child: TextField(
                     controller: ctrl,
-                    keyboardType: TextInputType.number,
+                    keyboardType: keyboardType,
                     decoration: const InputDecoration(
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.symmetric(
@@ -804,6 +848,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             border: Border.all(color: Colors.red.shade200)),
         child: Text(_task.rejectReason,
             style: TextStyle(color: Colors.red.shade700)));
+  }
+
+  /// 数量格式化：整数不显示小数，有小数保留1位
+  String _formatQty(double qty) {
+    if (qty == qty.truncateToDouble()) return '${qty.toInt()}';
+    return qty.toStringAsFixed(1);
   }
 
   String _formatDateTime(DateTime? dt) => dt == null

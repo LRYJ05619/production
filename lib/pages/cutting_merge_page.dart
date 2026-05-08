@@ -141,9 +141,29 @@ class ProcessMergeData {
           processCode.contains('断料') ||
           processCode == 'cutting';
 
-  /// 总数量转换为根（仅断料工序）
+  /// 是否为外置槽道（任意一个子任务是外置即视为外置组）
+  bool get isWaizhi => tasks.any((t) => t.erpName.contains('外置'));
+
+  /// 根系数：三根→3，双根→2，其他→1
+  int get rootMultiplier {
+    if (groupType == '三根') return 3;
+    if (groupType == '双根') return 2;
+    return 1;
+  }
+
+  /// 合计显示数量（统一处理外置/非外置、断料/其他）
+  /// - 外置断料：组 → 根 = qty × rootMultiplier
+  /// - 外置其他：组 → 米 = qty × rootMultiplier × lengthMeters
+  /// - 非外置断料：米 → 根 = qty / lengthMeters
+  /// - 非外置其他：米（不转换）
   double get totalPieces {
-    if (isCutting && lengthMeters > 0) {
+    if (isWaizhi && isCutting) {
+      return totalQuantity * rootMultiplier;
+    }
+    if (isWaizhi && !isCutting && lengthMeters > 0) {
+      return totalQuantity * rootMultiplier * lengthMeters;
+    }
+    if (!isWaizhi && isCutting && lengthMeters > 0) {
       return totalQuantity / lengthMeters;
     }
     return totalQuantity;
@@ -186,6 +206,16 @@ class ProcessTaskItem {
 
   double get lengthMeters => length / 1000.0;
 
+  /// 是否为外置槽道
+  bool get isWaizhi => erpName.contains('外置');
+
+  /// 根系数：三根→3，双根→2，其他→1
+  int get rootMultiplier {
+    if (groupType == '三根') return 3;
+    if (groupType == '双根') return 2;
+    return 1;
+  }
+
   double get processQtyPieces {
     if (lengthMeters > 0) {
       return processQty / lengthMeters;
@@ -193,9 +223,19 @@ class ProcessTaskItem {
     return processQty;
   }
 
-  /// 获取显示数量（仅断料工序转换为根）
+  /// 获取显示数量
+  /// - 外置断料：组 → 根 = qty × rootMultiplier
+  /// - 外置其他：组 → 米 = qty × rootMultiplier × lengthMeters
+  /// - 非外置断料：米 → 根 = qty / lengthMeters
+  /// - 非外置其他：米（不转换）
   double getDisplayQty(bool isCutting) {
-    if (isCutting && lengthMeters > 0) {
+    if (isWaizhi && isCutting) {
+      return processQty * rootMultiplier;
+    }
+    if (isWaizhi && !isCutting && lengthMeters > 0) {
+      return processQty * rootMultiplier * lengthMeters;
+    }
+    if (!isWaizhi && isCutting && lengthMeters > 0) {
       return processQty / lengthMeters;
     }
     return processQty;
@@ -783,7 +823,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
     final bool isCutting = data.isCutting;
     final String displayUnit = process.getDisplayUnit(isCutting);
-    final int displayTotalQty = isCutting ? data.totalPieces.round() : data.totalQuantity.toInt();
+    final int displayTotalQty = data.totalPieces.round();
     final int taskCount = data.tasks.length;
 
     // 格式化型号
@@ -1107,10 +1147,21 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       Map<int, List<double>> taskInputs,
       ) async {
     final bool isCutting = data.isCutting;
+    final bool isWaizhi = data.isWaizhi;
 
-    // 单位转换：断料工序用户输入根数，需转为米
+    // 单位转换：用户输入的显示单位 → API单位（组）
+    // 外置断料：根 → 组 = displayQty / rootMultiplier
+    // 外置其他：米 → 组 = displayQty / lengthMeters / rootMultiplier
+    // 非外置断料：根 → 米 = displayQty * lengthMeters
+    // 非外置其他：米（无需转换）
     double toApi(double displayQty) {
-      if (isCutting && data.lengthMeters > 0) {
+      if (isWaizhi && isCutting && data.rootMultiplier > 0) {
+        return displayQty / data.rootMultiplier;
+      }
+      if (isWaizhi && !isCutting && data.rootMultiplier > 0 && data.lengthMeters > 0) {
+        return displayQty / data.rootMultiplier / data.lengthMeters;
+      }
+      if (!isWaizhi && isCutting && data.lengthMeters > 0) {
         return displayQty * data.lengthMeters;
       }
       return displayQty;
