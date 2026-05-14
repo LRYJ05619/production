@@ -19,6 +19,8 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
+  List<Map<String, String>> _savedAccounts = [];
+
   @override
   void initState() {
     super.initState();
@@ -26,6 +28,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _loadSavedCredentials() {
+    _savedAccounts = StorageService.getSavedAccounts();
     final savedUsername = StorageService.getSavedUsername();
     final savedPassword = StorageService.getSavedPassword();
 
@@ -36,6 +39,88 @@ class _LoginPageState extends State<LoginPage> {
       _passwordController.text = savedPassword;
       _rememberPassword = true;
     }
+  }
+
+  void _switchAccount(Map<String, String> account) {
+    setState(() {
+      _usernameController.text = account['username'] ?? '';
+      _passwordController.text = account['password'] ?? '';
+      _errorMessage = null;
+    });
+  }
+
+  void _showAccountSwitcher() {
+    if (_savedAccounts.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.people, size: 18, color: Colors.grey),
+                  SizedBox(width: 8),
+                  Text('切换账号', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ..._savedAccounts.map((account) {
+              final username = account['username'] ?? '';
+              final isCurrent = username == _usernameController.text;
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: isCurrent ? Colors.orange.shade100 : Colors.grey.shade100,
+                  child: Text(
+                    username.isNotEmpty ? username[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: isCurrent ? Colors.orange : Colors.grey[700],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                title: Text(username),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isCurrent)
+                      const Icon(Icons.check_circle, color: Colors.orange, size: 18),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+                      onPressed: () async {
+                        await StorageService.removeAccount(username);
+                        setSheetState(() {
+                          _savedAccounts = StorageService.getSavedAccounts();
+                        });
+                        setState(() {
+                          _savedAccounts = StorageService.getSavedAccounts();
+                        });
+                        if (_savedAccounts.isEmpty && ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _usernameController.text = account['username'] ?? '';
+                  _passwordController.text = account['password'] ?? '';
+                  _login();
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -117,14 +202,35 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 60),
 
-              TextField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  labelText: '用户名',
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                textInputAction: TextInputAction.next,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _usernameController,
+                      decoration: InputDecoration(
+                        labelText: '用户名',
+                        prefixIcon: const Icon(Icons.person),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      textInputAction: TextInputAction.next,
+                    ),
+                  ),
+                  if (_savedAccounts.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _showAccountSwitcher,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Icon(Icons.people_alt_outlined, size: 22),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 20),
 

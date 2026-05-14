@@ -8,6 +8,7 @@ class StorageService {
   static const String _keyToken = 'saved_token';
   static const String _keyExpiresAt = 'token_expires_at';
   static const String _keyUserInfo = 'user_info';
+  static const String _keyAccounts = 'saved_accounts';
 
   static SharedPreferences? _prefs;
 
@@ -22,10 +23,45 @@ class StorageService {
   static Future<void> saveCredentials(String username, String password) async {
     await _prefs?.setString(_keyUsername, username);
     await _prefs?.setString(_keyPassword, password);
+    // 同步到多账号列表
+    await saveAccount(username, password);
   }
 
   static String? getSavedUsername() => _prefs?.getString(_keyUsername);
   static String? getSavedPassword() => _prefs?.getString(_keyPassword);
+
+  // ==================== 多账号列表 ====================
+  /// 返回所有已保存账号，格式：[{'username': ..., 'password': ...}, ...]
+  static List<Map<String, String>> getSavedAccounts() {
+    final str = _prefs?.getString(_keyAccounts);
+    if (str == null) return [];
+    try {
+      final list = jsonDecode(str) as List<dynamic>;
+      return list.map((e) => Map<String, String>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 保存或更新一个账号（以username为key，密码有变化时覆盖）
+  static Future<void> saveAccount(String username, String password) async {
+    final accounts = getSavedAccounts();
+    final idx = accounts.indexWhere((a) => a['username'] == username);
+    if (idx >= 0) {
+      accounts[idx]['password'] = password;
+    } else {
+      accounts.add({'username': username, 'password': password});
+    }
+    await _prefs?.setString(_keyAccounts, jsonEncode(accounts));
+  }
+
+  /// 删除一个已保存账号
+  static Future<void> removeAccount(String username) async {
+    final accounts = getSavedAccounts()
+        .where((a) => a['username'] != username)
+        .toList();
+    await _prefs?.setString(_keyAccounts, jsonEncode(accounts));
+  }
 
   // ==================== Token ====================
   static Future<void> saveToken(String token, DateTime expiresAt) async {

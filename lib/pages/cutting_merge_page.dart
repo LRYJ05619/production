@@ -596,7 +596,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
     String material = '碳钢';
     double length = 0;
-    String shape = 'Z';
+    String shape = '直';
     String specType = '';   // 类型&型号整体，如 "FPH 52/34"
     String groupType = '';
     double spacing = 0;
@@ -634,9 +634,11 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
     List<String> parts = specWithoutBrackets.split('-');
 
-    // 5. 第一部分：类型&型号整体（如 "FPH 52/34"，不可拆分）
+    // 5. 第一部分：类型&型号整体（如 "FPH 52/34"，规范化空格避免"FPH52/34"与"FPH 52/34"不同）
     if (parts.isNotEmpty) {
-      specType = parts[0].trim();
+      specType = parts[0].trim().replaceAll(RegExp(r'\s+'), ' ');
+      // 确保字母与数字之间有且仅有一个空格，如 "FPH52/34" → "FPH 52/34"
+      specType = specType.replaceAllMapped(RegExp(r'([A-Za-z])(\d)'), (m) => '${m[1]} ${m[2]}');
     }
 
     // 6. 第二部分：长度(mm)
@@ -645,15 +647,15 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       length = double.tryParse(lenStr) ?? 0;
     }
 
-    // 7. 第三部分：形状 Z=直形，R+数字=弧形（整体如"R6100"参与合并）
+    // 7. 第三部分：形状 Z=直形，R+数字=弧形，只区分直/弧
     if (parts.length > 2) {
       String shapePart = parts[2].trim().toUpperCase();
       // 去掉A4后缀（不锈钢标记可能跟在形状后）
       shapePart = shapePart.replaceAll(RegExp(r'\s*A4$'), '');
       if (shapePart.startsWith('R')) {
-        shape = shapePart;  // 保留完整值如 "R6100"
+        shape = '弧';
       } else {
-        shape = 'Z';
+        shape = '直';
       }
     }
 

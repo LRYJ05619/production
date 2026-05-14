@@ -7,6 +7,8 @@ import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
+const String kAppVersion = 'v0.9.26';
+
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
 
@@ -161,7 +163,7 @@ class _MainPageState extends State<MainPage> {
               ),
             ),
             const Spacer(),
-            Text('v0.9.24', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+            Text(kAppVersion, style: TextStyle(fontSize: 11, color: Colors.grey[400])),
           ],
         ),
         actions: [

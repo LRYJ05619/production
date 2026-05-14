@@ -4,7 +4,9 @@
       "PowerShell(cd \"C:\\\\Users\\\\15569\\\\Desktop\\\\production\"; Get-ChildItem -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"Dir\"}else{\"File\"}}} | Format-Table -AutoSize)",
       "PowerShell(cd \"C:\\\\Users\\\\15569\\\\Desktop\\\\production\"; Get-ChildItem -Path \".\\\\lib\" -Recurse | Where-Object { $_.PSIsContainer } | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"C:\\\\Users\\\\15569\\\\Desktop\\\\production\\\\lib\"\\), \"lib\" } | Sort-Object)",
       "PowerShell(cd \"C:\\\\Users\\\\15569\\\\Desktop\\\\production\"; Get-ChildItem -Path \".\\\\lib\" -Recurse -File | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"C:\\\\Users\\\\15569\\\\Desktop\\\\production\\\\\"\\), \"\" } | Sort-Object)",
-      "Bash(flutter analyze *)"
+      "Bash(flutter analyze *)",
+      "Read(//mnt/e/**)",
+      "Bash(flutter build *)"
     ]
   }
 }

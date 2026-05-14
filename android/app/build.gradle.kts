@@ -32,9 +32,34 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    applicationVariants.all {
+        val variant = this
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
+            .forEach { output ->
+                if (variant.buildType.name == "release") {
+                    output.outputFileName = "生产管理软件V${variant.versionName}.apk"
+                }
+            }
+    }
+}
+
+// Flutter release构建完成后自动重命名APK
+tasks.whenTaskAdded {
+    if (name == "assembleRelease") {
+        doLast {
+            val apkDir = file("${buildDir}/outputs/flutter-apk")
+            val src = File(apkDir, "app-release.apk")
+            val versionName = android.defaultConfig.versionName ?: "unknown"
+            val dst = File(apkDir, "生产管理软件V${versionName}.apk")
+            if (src.exists()) {
+                src.copyTo(dst, overwrite = true)
+                src.delete()
+            }
         }
     }
 }
