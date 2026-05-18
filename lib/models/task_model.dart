@@ -523,7 +523,7 @@ class ApiTaskData {
   final String workSummary;
   final int? producerId;
   final SimpleUserInfo? producer;
-  final int assignedQty;
+  final double assignedQty;
   final DateTime? planFinishTime;
   final double completedQty;
   final double qualifiedQty;
@@ -652,7 +652,7 @@ class ApiTaskData {
       workSummary: json['work_summary'] ?? '',
       producerId: json['producer_id'],
       producer: json['producer'] != null ? SimpleUserInfo.fromJson(json['producer']) : null,
-      assignedQty: (json['assigned_qty'] ?? 0).toInt(),
+      assignedQty: (json['assigned_qty'] ?? 0).toDouble(),
       planFinishTime: parseLocalTime(json['plan_finish_time']),
       completedQty: (json['completed_qty'] ?? 0).toDouble(),
       qualifiedQty: (json['qualified_qty'] ?? 0).toDouble(),
@@ -733,7 +733,7 @@ class ApiTaskData {
       processCode: json['process_code'],
       processName: json['process_name'],
       planQty: json['plan_qty']?.toInt(),
-      assignedQty: json['assigned_qty']?.toInt(),
+      assignedQty: json['assigned_qty']?.toDouble(),
       workerName: json['worker_name'],
       specModel: json['spec_model'],
       claimTime: parseLocalTime(json['claim_time']),
