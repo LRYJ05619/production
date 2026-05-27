@@ -141,8 +141,14 @@ class ProcessMergeData {
           processCode.contains('断料') ||
           processCode == 'cutting';
 
-  /// 是否为外置槽道（任意一个子任务是外置即视为外置组）
+  /// 是否包含外置任务（任意一个子任务是外置）
   bool get isWaizhi => tasks.any((t) => t.erpName.contains('外置'));
+
+  /// 是否包含预埋（非外置）任务
+  bool get hasPrebuild => tasks.any((t) => !t.isWaizhi);
+
+  /// 是否同时包含外置和预埋任务（混合组）
+  bool get hasMixedTypes => isWaizhi && hasPrebuild;
 
   /// 根系数：三根→3，双根→2，其他→1
   int get rootMultiplier {
@@ -151,22 +157,31 @@ class ProcessMergeData {
     return 1;
   }
 
-  /// 合计显示数量（统一处理外置/非外置、断料/其他）
-  /// - 外置断料：组 → 根 = qty × rootMultiplier
-  /// - 外置其他：组 → 米 = qty × rootMultiplier × lengthMeters
-  /// - 非外置断料：米 → 根 = qty / lengthMeters
-  /// - 非外置其他：米（不转换）
-  double get totalPieces {
-    if (isWaizhi && isCutting) {
-      return totalQuantity * rootMultiplier;
+  /// 外置任务合计显示数量（按每个外置任务分别转换后求和）
+  num get waizhiPieces {
+    double total = 0;
+    for (var t in tasks.where((t) => t.isWaizhi)) {
+      total += t.getDisplayQty(isCutting).toDouble();
     }
-    if (isWaizhi && !isCutting && lengthMeters > 0) {
-      return totalQuantity * rootMultiplier * lengthMeters;
+    return isCutting ? total.round() : double.parse(total.toStringAsFixed(2));
+  }
+
+  /// 预埋任务合计显示数量（按每个预埋任务分别转换后求和）
+  num get prebuildPieces {
+    double total = 0;
+    for (var t in tasks.where((t) => !t.isWaizhi)) {
+      total += t.getDisplayQty(isCutting).toDouble();
     }
-    if (!isWaizhi && isCutting && lengthMeters > 0) {
-      return totalQuantity / lengthMeters;
+    return isCutting ? total.round() : double.parse(total.toStringAsFixed(2));
+  }
+
+  /// 合计显示数量（按每个任务分别转换后求和，正确处理外置/预埋混合组）
+  num get totalPieces {
+    double total = 0;
+    for (var t in tasks) {
+      total += t.getDisplayQty(isCutting).toDouble();
     }
-    return totalQuantity;
+    return isCutting ? total.round() : double.parse(total.toStringAsFixed(2));
   }
 }
 
@@ -228,15 +243,15 @@ class ProcessTaskItem {
   /// - 外置其他：组 → 米 = qty × rootMultiplier × lengthMeters
   /// - 非外置断料：米 → 根 = qty / lengthMeters
   /// - 非外置其他：米（不转换）
-  double getDisplayQty(bool isCutting) {
+  num getDisplayQty(bool isCutting) {
     if (isWaizhi && isCutting) {
-      return processQty * rootMultiplier;
+      return (processQty * rootMultiplier).round();
     }
     if (isWaizhi && !isCutting && lengthMeters > 0) {
       return processQty * rootMultiplier * lengthMeters;
     }
     if (!isWaizhi && isCutting && lengthMeters > 0) {
-      return processQty / lengthMeters;
+      return (processQty / lengthMeters).round();
     }
     return processQty;
   }
@@ -529,7 +544,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     return groups.values.map((group) {
       double totalQty = 0;
       for (var t in group.tasks) {
-        totalQty += t.processQty;
+        totalQty = (totalQty * 10 + t.processQty * 10) / 10;
       }
       return ProcessMergeData(
         id: group.id,
@@ -825,7 +840,6 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   Widget _buildMergeCard(ProcessMergeData data, ProcessType process) {
     final bool isCutting = data.isCutting;
     final String displayUnit = process.getDisplayUnit(isCutting);
-    final int displayTotalQty = data.totalPieces.round();
     final int taskCount = data.tasks.length;
 
     // 格式化型号
@@ -866,23 +880,12 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
             mergedSpec,
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           ),
-          // 第二行：材质 + 合计 + 任务数
+          // 第二行：材质 + 外置/预埋标签 + 合计（混合时分开显示）
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Row(
-              children: [
-                _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
-                const SizedBox(width: 8),
-                Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                Text(
-                  '$displayTotalQty',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
-                ),
-                Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                const SizedBox(width: 8),
-                Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
-              ],
-            ),
+            child: data.hasMixedTypes
+                ? _buildMixedSubtitle(data, displayUnit, taskCount)
+                : _buildSingleSubtitle(data, displayUnit, taskCount),
           ),
           children: [
             const Divider(height: 1),
@@ -925,9 +928,61 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     );
   }
 
+  /// 副标题：纯外置或纯预埋（加标签 + 合计）
+  Widget _buildSingleSubtitle(ProcessMergeData data, String displayUnit, int taskCount) {
+    final Color typeColor = data.isWaizhi ? Colors.deepOrange : Colors.green.shade700;
+    final String typeLabel = data.isWaizhi ? '外置' : '预埋';
+    return Row(
+      children: [
+        _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
+        const SizedBox(width: 6),
+        _buildTag(typeLabel, typeColor),
+        const SizedBox(width: 8),
+        Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        Text(
+          '${data.totalPieces}',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+        ),
+        Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(width: 8),
+        Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+      ],
+    );
+  }
+
+  /// 副标题：外置 + 预埋混合（分两行分别显示数量）
+  Widget _buildMixedSubtitle(ProcessMergeData data, String displayUnit, int taskCount) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTag(data.material, data.material == '不锈钢' ? Colors.indigo : Colors.brown),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            _buildTag('预埋', Colors.green.shade700),
+            const SizedBox(width: 4),
+            Text(
+              '${data.prebuildPieces} $displayUnit',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+            ),
+            const SizedBox(width: 12),
+            _buildTag('外置', Colors.deepOrange),
+            const SizedBox(width: 4),
+            Text(
+              '${data.waizhiPieces} $displayUnit',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+            ),
+            const SizedBox(width: 8),
+            Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildTaskItem(ProcessTaskItem task, ProcessType process, bool isCutting) {
     final String displayUnit = process.getDisplayUnit(isCutting);
-    final int displayQty = task.getDisplayQty(isCutting).round();
+    final num displayQty = task.getDisplayQty(isCutting);
 
     return Material(
       color: Colors.transparent,

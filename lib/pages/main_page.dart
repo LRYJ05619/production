@@ -7,7 +7,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
-const String kAppVersion = 'v0.9.27';
+const String kAppVersion = 'v0.9.28';
 
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
