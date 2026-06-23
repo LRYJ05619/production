@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/update_service.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
-const String kAppVersion = 'v0.9.29';
+const String kAppVersion = 'v0.9.30';
 
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
@@ -39,6 +40,7 @@ class _MainPageState extends State<MainPage> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _refreshCurrentTab();
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
   }
 
   @override
@@ -109,6 +111,17 @@ class _MainPageState extends State<MainPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshCurrentTab();
     });
+  }
+
+  Future<void> _checkForUpdate() async {
+    final info = await UpdateService.checkForUpdate(kAppVersion);
+    if (info != null && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: !info.forceUpdate,
+        builder: (_) => UpdateDialog(info: info),
+      );
+    }
   }
 
   Future<void> _logout() async {
@@ -217,6 +230,121 @@ class _MainPageState extends State<MainPage> {
           BottomNavigationBarItem(icon: Icon(Icons.assignment), label: '生产任务'),
           BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: '其他任务'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: '历史记录'),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== 自动更新对话框 ====================
+
+enum _UpdatePhase { idle, downloading, done, failed }
+
+class UpdateDialog extends StatefulWidget {
+  final AppVersionInfo info;
+  const UpdateDialog({super.key, required this.info});
+
+  @override
+  State<UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<UpdateDialog> {
+  _UpdatePhase _phase = _UpdatePhase.idle;
+  double _progress = 0;
+  String? _apkPath;
+  bool _cancelled = false;
+
+  Future<void> _startDownload() async {
+    setState(() {
+      _phase = _UpdatePhase.downloading;
+      _progress = 0;
+      _cancelled = false;
+    });
+
+    final path = await UpdateService.downloadApk(
+      version: widget.info.version,
+      onProgress: (p) {
+        if (mounted) setState(() => _progress = p);
+      },
+      isCancelled: () => _cancelled,
+    );
+
+    if (!mounted) return;
+    if (path != null) {
+      setState(() {
+        _phase = _UpdatePhase.done;
+        _apkPath = path;
+      });
+    } else if (!_cancelled) {
+      setState(() => _phase = _UpdatePhase.failed);
+    }
+  }
+
+  void _cancel() {
+    _cancelled = true;
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final force = widget.info.forceUpdate;
+    return PopScope(
+      canPop: !force && _phase != _UpdatePhase.downloading,
+      child: AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.system_update, color: Colors.blue, size: 22),
+            const SizedBox(width: 8),
+            Expanded(child: Text('发现新版本 ${widget.info.version}', style: const TextStyle(fontSize: 16))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.info.releaseNote.isNotEmpty) ...[
+              const Text('更新内容', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(widget.info.releaseNote, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+            ],
+            if (_phase == _UpdatePhase.downloading) ...[
+              Row(
+                children: [
+                  const Text('正在下载...', style: TextStyle(fontSize: 13)),
+                  const Spacer(),
+                  Text('${(_progress * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              LinearProgressIndicator(value: _progress, minHeight: 6,
+                  borderRadius: BorderRadius.circular(3)),
+            ],
+            if (_phase == _UpdatePhase.failed)
+              const Text('下载失败，请检查网络后重试', style: TextStyle(color: Colors.red, fontSize: 13)),
+            if (force)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('此版本为强制更新，请完成更新后继续使用',
+                    style: TextStyle(color: Colors.orange, fontSize: 12)),
+              ),
+          ],
+        ),
+        actions: [
+          if (!force && _phase == _UpdatePhase.idle)
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('稍后再说')),
+          if (_phase == _UpdatePhase.idle || _phase == _UpdatePhase.failed)
+            ElevatedButton(onPressed: _startDownload, child: const Text('立即更新')),
+          if (_phase == _UpdatePhase.downloading && !force)
+            TextButton(onPressed: _cancel, child: const Text('取消')),
+          if (_phase == _UpdatePhase.done)
+            ElevatedButton(
+              onPressed: () async {
+                if (_apkPath != null) await UpdateService.installApk(_apkPath!);
+              },
+              child: const Text('立即安装'),
+            ),
         ],
       ),
     );

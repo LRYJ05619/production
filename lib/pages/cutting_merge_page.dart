@@ -602,9 +602,10 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   ///   (150)      - 括号中：成组间距，一个数字=双根，两个数字(150-150)=三根
   ///   A4         - 末尾有A4=不锈钢，无则碳钢
   /// 示例:
-  ///   "FPH 52/34-2500-Z （150-150）"  → 52/34, 2500mm, 直形, 三根间距150
-  ///   "FPH 53/34-1900-R6670"          → 53/34, 1900mm, 弧形R6670
-  ///   "FPH 52/34-2500-Z-A4"           → 52/34, 2500mm, 直形, 不锈钢
+  ///   "FPH 52/34-2500-Z （150-150）"                          → 52/34, 2500mm, 直形, 三根间距150
+  ///   "FPH 53/34-1900-R6670"                                  → 53/34, 1900mm, 弧形R6670
+  ///   "FPH 52/34-2500-Z-A4"                                   → 52/34, 2500mm, 直形, 不锈钢
+  ///   "FPH 52/34-1500（320折角153度)+（670.8折角117度）+509.2-Z(400）" → 52/34, 1500mm, 直形, 双根间距400
   Map<String, dynamic> _parseTaskInfo(ApiTaskData task) {
     String spec = task.specModel;
     String name = task.productName;
@@ -621,56 +622,103 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         .replaceAll('（', '(')
         .replaceAll('）', ')');
 
-    // 2. 先提取括号中的间距信息（成组槽道）
-    final bracketMatch = RegExp(r'\(([^)]+)\)').firstMatch(normalizedSpec);
-    if (bracketMatch != null) {
-      String bracketContent = bracketMatch.group(1) ?? '';
-      List<String> spacings = bracketContent.split('-');
-      if (spacings.length >= 2) {
-        // 两个数字 = 三根成组
-        groupType = '三根';
-        spacing = double.tryParse(spacings[0].trim()) ?? 0;
-      } else if (spacings.length == 1 && spacings[0].trim().isNotEmpty) {
-        // 一个数字 = 双根成组
-        groupType = '双根';
-        spacing = double.tryParse(spacings[0].trim()) ?? 0;
+    if (normalizedSpec.contains('折角')) {
+      // 多段折角格式: "FPH 52/34-1500(320折角153度)+(670.8折角117度)+509.2-Z(400)"
+      // 先移除含"折角"的括号段，留下形状和间距部分
+      final String withoutBend = normalizedSpec
+          .replaceAll(RegExp(r'\([^)]*折角[^)]*\)'), '');
+      // withoutBend 示例: "FPH 52/34-1500+509.2-Z(400)"
+
+      // A4 检测
+      if (withoutBend.toUpperCase().contains('A4')) material = '不锈钢';
+
+      // specType：第一个 '-' 之前
+      final int firstDash = withoutBend.indexOf('-');
+      if (firstDash > 0) {
+        specType = withoutBend.substring(0, firstDash).trim()
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .replaceAllMapped(RegExp(r'([A-Za-z])(\d)'), (m) => '${m[1]} ${m[2]}');
       }
-    }
 
-    // 3. 去掉括号部分，再按 - 分割（避免括号内的-干扰分割）
-    String specWithoutBrackets = normalizedSpec
-        .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
-        .trim();
+      // 总长度：第一个 '-' 后紧跟的数字（忽略后续 +段 拼接）
+      final lenMatch = RegExp(r'-(\d+(?:\.\d+)?)').firstMatch(withoutBend);
+      if (lenMatch != null) length = double.tryParse(lenMatch.group(1)!) ?? 0;
 
-    // 4. 检测A4（不锈钢）
-    if (specWithoutBrackets.toUpperCase().contains('A4')) {
-      material = '不锈钢';
-    }
+      // 形状：去掉间距括号后按 '-' 分割取第三部分
+      final String specForShape = withoutBend
+          .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+          .trim();
+      // specForShape 示例: "FPH 52/34-1500+509.2-Z"
+      final List<String> shapeParts = specForShape.split('-');
+      if (shapeParts.length > 2) {
+        final String shapePart = shapeParts[2].trim().toUpperCase()
+            .replaceAll(RegExp(r'\s*A4$'), '');
+        shape = shapePart.startsWith('R') ? '弧' : '直';
+      }
 
-    List<String> parts = specWithoutBrackets.split('-');
+      // 间距：withoutBend 中最后一个括号内容
+      final spacingMatches = RegExp(r'\(([^)]+)\)').allMatches(withoutBend);
+      if (spacingMatches.isNotEmpty) {
+        final String bracketContent = spacingMatches.last.group(1)!;
+        final List<String> spacingParts = bracketContent.split('-');
+        if (spacingParts.length >= 2) {
+          groupType = '三根';
+          spacing = double.tryParse(spacingParts[0].trim()) ?? 0;
+        } else if (spacingParts[0].trim().isNotEmpty) {
+          groupType = '双根';
+          spacing = double.tryParse(spacingParts[0].trim()) ?? 0;
+        }
+      }
+    } else {
+      // 标准格式: "FPH 52/34-2500-Z (150)"
 
-    // 5. 第一部分：类型&型号整体（如 "FPH 52/34"，规范化空格避免"FPH52/34"与"FPH 52/34"不同）
-    if (parts.isNotEmpty) {
-      specType = parts[0].trim().replaceAll(RegExp(r'\s+'), ' ');
-      // 确保字母与数字之间有且仅有一个空格，如 "FPH52/34" → "FPH 52/34"
-      specType = specType.replaceAllMapped(RegExp(r'([A-Za-z])(\d)'), (m) => '${m[1]} ${m[2]}');
-    }
+      // 2. 先提取括号中的间距信息（成组槽道）
+      final bracketMatch = RegExp(r'\(([^)]+)\)').firstMatch(normalizedSpec);
+      if (bracketMatch != null) {
+        String bracketContent = bracketMatch.group(1) ?? '';
+        List<String> spacings = bracketContent.split('-');
+        if (spacings.length >= 2) {
+          groupType = '三根';
+          spacing = double.tryParse(spacings[0].trim()) ?? 0;
+        } else if (spacings.length == 1 && spacings[0].trim().isNotEmpty) {
+          groupType = '双根';
+          spacing = double.tryParse(spacings[0].trim()) ?? 0;
+        }
+      }
 
-    // 6. 第二部分：长度(mm)
-    if (parts.length > 1) {
-      String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
-      length = double.tryParse(lenStr) ?? 0;
-    }
+      // 3. 去掉括号部分，再按 - 分割（避免括号内的-干扰分割）
+      String specWithoutBrackets = normalizedSpec
+          .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+          .trim();
 
-    // 7. 第三部分：形状 Z=直形，R+数字=弧形，只区分直/弧
-    if (parts.length > 2) {
-      String shapePart = parts[2].trim().toUpperCase();
-      // 去掉A4后缀（不锈钢标记可能跟在形状后）
-      shapePart = shapePart.replaceAll(RegExp(r'\s*A4$'), '');
-      if (shapePart.startsWith('R')) {
-        shape = '弧';
-      } else {
-        shape = '直';
+      // 4. 检测A4（不锈钢）
+      if (specWithoutBrackets.toUpperCase().contains('A4')) {
+        material = '不锈钢';
+      }
+
+      List<String> parts = specWithoutBrackets.split('-');
+
+      // 5. 第一部分：类型&型号整体（如 "FPH 52/34"，规范化空格避免"FPH52/34"与"FPH 52/34"不同）
+      if (parts.isNotEmpty) {
+        specType = parts[0].trim().replaceAll(RegExp(r'\s+'), ' ');
+        specType = specType.replaceAllMapped(RegExp(r'([A-Za-z])(\d)'), (m) => '${m[1]} ${m[2]}');
+      }
+
+      // 6. 第二部分：长度(mm)
+      if (parts.length > 1) {
+        String lenStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
+        length = double.tryParse(lenStr) ?? 0;
+      }
+
+      // 7. 第三部分：形状 Z=直形，R+数字=弧形，只区分直/弧
+      if (parts.length > 2) {
+        String shapePart = parts[2].trim().toUpperCase();
+        shapePart = shapePart.replaceAll(RegExp(r'\s*A4$'), '');
+        if (shapePart.startsWith('R')) {
+          shape = '弧';
+        } else {
+          shape = '直';
+        }
       }
     }
 
@@ -938,14 +986,20 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
         const SizedBox(width: 6),
         _buildTag(typeLabel, typeColor),
         const SizedBox(width: 8),
-        Text('合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-        Text(
-          '${data.totalPieces}',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+        Expanded(
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(text: '合计: ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              TextSpan(
+                text: '${data.totalPieces}',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+              ),
+              TextSpan(text: ' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              TextSpan(text: '  $taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+            ]),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        Text(' $displayUnit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-        const SizedBox(width: 8),
-        Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
       ],
     );
   }

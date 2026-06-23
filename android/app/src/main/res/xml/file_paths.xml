@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 覆盖 getTemporaryDirectory() 返回的内部缓存目录 -->
+    <cache-path name="cache" path="." />
+</paths>
