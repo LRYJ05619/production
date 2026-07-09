@@ -3,7 +3,8 @@
         android:label="生产管理"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="true">
 
         <!-- APK 安装包共享给系统安装器 -->
         <provider

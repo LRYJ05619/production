@@ -22,6 +22,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   bool _isSubmitting = false;
 
   late TextEditingController _workSummaryController;
+  late TextEditingController _completedQtyController;
   late TextEditingController _approvalNoteController;
 
   UserRole get _role => widget.userInfo.userRole;
@@ -55,15 +56,20 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   void initState() {
     super.initState();
     _workSummaryController = TextEditingController(text: _work.workSummary);
+    _completedQtyController = TextEditingController();
     _approvalNoteController = TextEditingController(text: _work.approvalNote);
   }
 
   @override
   void dispose() {
     _workSummaryController.dispose();
+    _completedQtyController.dispose();
     _approvalNoteController.dispose();
     super.dispose();
   }
+
+  /// 数量格式化：保留两位小数
+  String _formatQty(double qty) => qty.toStringAsFixed(2);
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +137,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
         _buildInfoRow('工 作 地 点:', _work.displayLocation),
         _buildInfoRow('工 作 说 明:', _work.displayWorkDescription),
         _buildInfoRow('分 配 时 间:', _formatDateTime(_work.createdAt)),
+        _buildInfoRow('计 划 数 量:', _formatQty(_work.displayPlanQty)),
         _buildInfoRow('计 划 工 时:', '${_work.displayPlanHours}小时'),
         _buildInfoRow('计 划 完 成:', _formatDateTime(_work.displayPlanFinishTime)),
         _buildInfoRow('操   作   者:', _work.workerName),
@@ -182,6 +189,9 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
         const Divider(height: 32),
         _buildSectionTitle('完工报工'),
         const SizedBox(height: 12),
+        _buildEditRowSuffix('完 成 数 量:', _completedQtyController, '',
+            hintText: '选填，默认0'),
+        const SizedBox(height: 8),
         const Text('工作小结:', style: TextStyle(fontSize: 14)),
         const SizedBox(height: 8),
         _buildTextArea(_workSummaryController, '请输入工作小结...'),
@@ -200,6 +210,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
     return [
       const Divider(height: 32),
       _buildSectionTitle('报工数据'),
+      _buildInfoRow('完 成 数 量:', _formatQty(_work.completedQty)),
       _buildInfoRow('实 际 工 时:', '${_work.workHours}小时'),
       _buildInfoRow('工 作 小 结:', _work.workSummary),
     ];
@@ -213,6 +224,7 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
       widgets.addAll([
         const Divider(height: 32),
         _buildSectionTitle('员工报工'),
+        _buildInfoRow('完 成 数 量:', _formatQty(_work.completedQty)),
         _buildInfoRow('实 际 工 时:', '${_work.workHours}小时'),
         _buildInfoRow('工 作 小 结:', _work.workSummary),
       ]);
@@ -333,11 +345,16 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
     // 自动计算实际工时（提报时间 - 领取时间，含午休扣除）
     final workHours = _calcWorkHours();
 
+    // 完成数量为选填字段，留空默认按0提交，保留两位小数
+    final inputCompletedQty =
+        double.tryParse(_completedQtyController.text) ?? 0;
+    final completedQty = double.parse(inputCompletedQty.toStringAsFixed(2));
+
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitReport(
       taskId: _work.id,
-      completedQty: 1,
-      qualifiedQty: 1,
+      completedQty: completedQty,
+      qualifiedQty: completedQty,
       workWasteQty: 0,
       materialWasteQty: 0,
       repairQty: 0,
@@ -438,7 +455,8 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
   }
 
   Widget _buildEditRowSuffix(
-      String label, TextEditingController ctrl, String suffix) {
+      String label, TextEditingController ctrl, String suffix,
+      {String hintText = ''}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
@@ -456,11 +474,12 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
                     controller: ctrl,
                     keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
-                        isDense: true)))),
+                        isDense: true,
+                        hintText: hintText)))),
         const SizedBox(width: 8),
         Text(suffix)
       ]),

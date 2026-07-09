@@ -263,6 +263,7 @@ class ExtraWorkInfo {
   final String workContent;
   final String location;
   final String workDescription;
+  final double planQty;
   final double planHours;
   final DateTime? planFinishTime;
   final double assignedHours;
@@ -279,6 +280,7 @@ class ExtraWorkInfo {
     required this.workContent,
     required this.location,
     required this.workDescription,
+    required this.planQty,
     required this.planHours,
     this.planFinishTime,
     required this.assignedHours,
@@ -297,6 +299,7 @@ class ExtraWorkInfo {
       workContent: json['work_content'] ?? '',
       location: json['location'] ?? '',
       workDescription: json['work_description'] ?? '',
+      planQty: (json['plan_qty'] ?? 0).toDouble(),
       planHours: (json['plan_hours'] ?? 0).toDouble(),
       planFinishTime: parseLocalTime(json['plan_finish_time']),
       assignedHours: (json['assigned_hours'] ?? 0).toDouble(),
@@ -341,6 +344,7 @@ class ExtraWorkData {
   final int? extraWorkId;
   final ExtraWorkInfo? extraWork;
 
+  final double planQty;
   final double planHours;
   final double actualHours;
   final String workSummary;
@@ -350,6 +354,7 @@ class ExtraWorkData {
   final DateTime? planFinishTime;
 
   final double workHours;
+  final double completedQty;
 
   final int? approverId;
   final SimpleUserInfo? approver;
@@ -374,6 +379,7 @@ class ExtraWorkData {
     required this.teamId,
     this.extraWorkId,
     this.extraWork,
+    required this.planQty,
     required this.planHours,
     required this.actualHours,
     required this.workSummary,
@@ -382,6 +388,7 @@ class ExtraWorkData {
     required this.workDescription,
     this.planFinishTime,
     required this.workHours,
+    required this.completedQty,
     this.approverId,
     this.approver,
     this.approvalTime,
@@ -404,6 +411,7 @@ class ExtraWorkData {
       teamId: json['team_id'] ?? 0,
       extraWorkId: json['extra_work_id'],
       extraWork: json['extra_work'] != null ? ExtraWorkInfo.fromJson(json['extra_work']) : null,
+      planQty: (json['plan_qty'] ?? 0).toDouble(),
       planHours: (json['plan_hours'] ?? 0).toDouble(),
       actualHours: (json['actual_hours'] ?? 0).toDouble(),
       workSummary: json['work_summary'] ?? '',
@@ -412,6 +420,7 @@ class ExtraWorkData {
       workDescription: json['work_description'] ?? '',
       planFinishTime: parseLocalTime(json['plan_finish_time']),
       workHours: (json['work_hours'] ?? 0).toDouble(),
+      completedQty: (json['completed_qty'] ?? 0).toDouble(),
       approverId: json['approver_id'],
       approver: json['approver'] != null ? SimpleUserInfo.fromJson(json['approver']) : null,
       approvalTime: parseLocalTime(json['approval_time']),
@@ -434,6 +443,7 @@ class ExtraWorkData {
       teamId: json['team_id'] ?? 0,
       extraWorkId: json['extra_work_id'],
       extraWork: null,
+      planQty: (json['plan_qty'] ?? 0).toDouble(),
       planHours: (json['plan_hours'] ?? 0).toDouble(),
       actualHours: 0,
       workSummary: json['work_summary'] ?? '',
@@ -442,6 +452,7 @@ class ExtraWorkData {
       workDescription: json['work_description'] ?? '',
       planFinishTime: parseLocalTime(json['plan_finish_time']),
       workHours: 0,
+      completedQty: (json['completed_qty'] ?? 0).toDouble(),
       approverId: null,
       approver: null,
       approvalTime: null,
@@ -462,6 +473,7 @@ class ExtraWorkData {
   String get displayWorkContent => extraWork?.workContent ?? workContent;
   String get displayLocation => extraWork?.location ?? location;
   String get displayWorkDescription => extraWork?.workDescription ?? workDescription;
+  double get displayPlanQty => extraWork?.planQty ?? planQty;
   double get displayPlanHours => extraWork?.planHours ?? planHours;
   DateTime? get displayPlanFinishTime => extraWork?.planFinishTime ?? planFinishTime;
   String get creatorName => extraWork?.creatorName ?? '';
