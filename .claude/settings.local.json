@@ -6,7 +6,9 @@
       "PowerShell(cd \"C:\\\\Users\\\\15569\\\\Desktop\\\\production\"; Get-ChildItem -Path \".\\\\lib\" -Recurse -File | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"C:\\\\Users\\\\15569\\\\Desktop\\\\production\\\\\"\\), \"\" } | Sort-Object)",
       "Bash(flutter analyze *)",
       "Read(//mnt/e/**)",
-      "Bash(flutter build *)"
+      "Bash(flutter build *)",
+      "Bash(flutter --version)",
+      "Bash(dart analyze *)"
     ]
   }
 }

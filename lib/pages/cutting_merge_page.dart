@@ -1027,7 +1027,14 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.deepOrange),
             ),
             const SizedBox(width: 8),
-            Text('$taskCount个', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+            Flexible(
+              child: Text(
+                '$taskCount个',
+                style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
           ],
         ),
       ],
@@ -1265,17 +1272,20 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     // 外置其他：米 → 组 = displayQty / lengthMeters / rootMultiplier
     // 非外置断料：根 → 米 = displayQty * lengthMeters
     // 非外置其他：米（无需转换）
+    // 两位小数截断，不四舍五入（加极小容差抵消浮点数乘法误差）
+    double truncate2(double qty) => (qty * 100 + 1e-9).truncateToDouble() / 100;
+
     double toApi(double displayQty) {
       if (isWaizhi && isCutting && data.rootMultiplier > 0) {
-        return displayQty / data.rootMultiplier;
+        return truncate2(displayQty / data.rootMultiplier);
       }
       if (isWaizhi && !isCutting && data.rootMultiplier > 0 && data.lengthMeters > 0) {
-        return displayQty / data.rootMultiplier / data.lengthMeters;
+        return truncate2(displayQty / data.rootMultiplier / data.lengthMeters);
       }
       if (!isWaizhi && isCutting && data.lengthMeters > 0) {
-        return displayQty * data.lengthMeters;
+        return truncate2(displayQty * data.lengthMeters);
       }
-      return displayQty;
+      return truncate2(displayQty);
     }
 
     final List<Map<String, dynamic>> items = [];
@@ -1330,7 +1340,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       final double apiQualified = toApi(qualified);
       final double apiWorkWaste = toApi(workWaste);
       final double apiMaterialWaste = toApi(materialWaste);
-      final double apiCompleted = apiQualified + apiWorkWaste + apiMaterialWaste;
+      final double apiCompleted = truncate2(apiQualified + apiWorkWaste + apiMaterialWaste);
 
       // 最后一个任务用减法确保总和精确
       double taskHours;
@@ -1344,10 +1354,10 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
       items.add({
         'task_id': task.id,
-        'completed_qty': double.parse(apiCompleted.toStringAsFixed(2)),
-        'qualified_qty': double.parse(apiQualified.toStringAsFixed(2)),
-        'work_waste_qty': double.parse(apiWorkWaste.toStringAsFixed(2)),
-        'material_waste_qty': double.parse(apiMaterialWaste.toStringAsFixed(2)),
+        'completed_qty': apiCompleted,
+        'qualified_qty': apiQualified,
+        'work_waste_qty': apiWorkWaste,
+        'material_waste_qty': apiMaterialWaste,
         'repair_qty': 0,
         'loss_qty': 0,
         'work_hours': taskHours,

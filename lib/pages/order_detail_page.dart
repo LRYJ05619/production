@@ -122,6 +122,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   /// 可报工数量（显示单位）
   double get _remainingQtyDisplay => _convertToDisplayQty(_remainingQty);
 
+  /// 质检页面：实际可报工数量（合格+工废+料废换算为显示单位，两位小数截断，不四舍五入）
+  double get _qcActualReportableQty => _truncateTo2(_convertToDisplayQty(
+      _task.qualifiedQty + _task.workWasteQty + _task.materialWasteQty));
+
   /// 转入数量（显示单位）
   double get _transferInQtyDisplay => _convertToDisplayQty(_transferInQty);
 
@@ -203,17 +207,17 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final displayQcQualified = _convertToDisplayQty(_task.qcQualifiedQty);
 
     _qualifiedQtyController = TextEditingController(
-        text: displayQualified > 0 ? _formatQty(displayQualified) : '');
+        text: displayQualified > 0 ? _formatQtyTruncated(displayQualified) : '');
     _workWasteQtyController = TextEditingController(
-        text: displayWorkWaste > 0 ? _formatQty(displayWorkWaste) : '');
+        text: displayWorkWaste > 0 ? _formatQtyTruncated(displayWorkWaste) : '');
     _materialWasteQtyController = TextEditingController(
-        text: displayMaterialWaste > 0 ? _formatQty(displayMaterialWaste) : '');
+        text: displayMaterialWaste > 0 ? _formatQtyTruncated(displayMaterialWaste) : '');
     _repairQtyController = TextEditingController(
-        text: displayRepair > 0 ? _formatQty(displayRepair) : '');
+        text: displayRepair > 0 ? _formatQtyTruncated(displayRepair) : '');
     _lossQtyController = TextEditingController(
-        text: displayLoss > 0 ? _formatQty(displayLoss) : '');
+        text: displayLoss > 0 ? _formatQtyTruncated(displayLoss) : '');
     _qcQualifiedQtyController = TextEditingController(
-        text: displayQcQualified > 0 ? _formatQty(displayQcQualified) : '');
+        text: displayQcQualified > 0 ? _formatQtyTruncated(displayQcQualified) : '');
     _qcWorkWasteQtyController = TextEditingController();
     _qcMaterialWasteQtyController = TextEditingController();
     _qcOpinionController = TextEditingController(text: _task.qcOpinion);
@@ -423,6 +427,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       widgets.addAll([
         const Divider(height: 32),
         _buildSectionTitle('质检填报'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            '实际可报工数量: ${_formatQtyTruncated(_qcActualReportableQty)} $_displayUnit',
+            style: const TextStyle(
+                fontSize: 13, color: Colors.red, fontWeight: FontWeight.w600),
+          ),
+        ),
         _buildEditRow('质检合格数:', _qcQualifiedQtyController,
             suffix: _displayUnit),
         _buildEditRow('质检工废数:', _qcWorkWasteQtyController,
@@ -611,13 +623,13 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       }
     }
 
-    // 转换为接口需要的数量（槽道：根→米）
-    final apiQualified = _convertToApiQty(inputQualified);
-    final apiWorkWaste = _convertToApiQty(inputWorkWaste);
-    final apiMaterialWaste = _convertToApiQty(inputMaterialWaste);
-    final apiRepair = _convertToApiQty(inputRepair);
-    final apiLoss = _convertToApiQty(inputLoss);
-    final apiCompleted = apiQualified + apiWorkWaste + apiMaterialWaste;
+    // 转换为接口需要的数量（槽道：根→米），结果为小数时两位小数截断，不四舍五入
+    final apiQualified = _truncateTo2(_convertToApiQty(inputQualified));
+    final apiWorkWaste = _truncateTo2(_convertToApiQty(inputWorkWaste));
+    final apiMaterialWaste = _truncateTo2(_convertToApiQty(inputMaterialWaste));
+    final apiRepair = _truncateTo2(_convertToApiQty(inputRepair));
+    final apiLoss = _truncateTo2(_convertToApiQty(inputLoss));
+    final apiCompleted = _truncateTo2(apiQualified + apiWorkWaste + apiMaterialWaste);
 
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitReport(
@@ -649,9 +661,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           double.tryParse(_qcWorkWasteQtyController.text) ?? 0;
       final inputQcMaterialWaste =
           double.tryParse(_qcMaterialWasteQtyController.text) ?? 0;
-      // 可提报总数量 = 合格 + 工废 + 料废
-      final displayTotal = _convertToDisplayQty(
-          _task.qualifiedQty + _task.workWasteQty + _task.materialWasteQty);
+      // 可提报总数量 = 合格 + 工废 + 料废（两位小数截断，与页面顶部提示值一致）
+      final displayTotal = _qcActualReportableQty;
       if ((inputQcQualified + inputQcWorkWaste + inputQcMaterialWaste) != displayTotal ||
           inputQcQualified == 0) {
         _showError('总数量与提报数量不符，请重新填写');
@@ -659,13 +670,13 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       }
     }
 
-    // 转换为接口数量
-    final apiQcQualified = _convertToApiQty(
-        double.tryParse(_qcQualifiedQtyController.text) ?? 0);
-    final apiQcWorkWaste = _convertToApiQty(
-        double.tryParse(_qcWorkWasteQtyController.text) ?? 0);
-    final apiQcMaterialWaste = _convertToApiQty(
-        double.tryParse(_qcMaterialWasteQtyController.text) ?? 0);
+    // 转换为接口数量，结果为小数时两位小数截断，不四舍五入
+    final apiQcQualified = _truncateTo2(_convertToApiQty(
+        double.tryParse(_qcQualifiedQtyController.text) ?? 0));
+    final apiQcWorkWaste = _truncateTo2(_convertToApiQty(
+        double.tryParse(_qcWorkWasteQtyController.text) ?? 0));
+    final apiQcMaterialWaste = _truncateTo2(_convertToApiQty(
+        double.tryParse(_qcMaterialWasteQtyController.text) ?? 0));
 
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitQcReview(
@@ -854,6 +865,19 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   String _formatQty(double qty) {
     if (qty == qty.truncateToDouble()) return '${qty.toInt()}';
     return qty.toStringAsFixed(1);
+  }
+
+  /// 数量截断到两位小数，不四舍五入（如 0.66666 → 0.66）
+  /// 加一个极小的容差抵消浮点数乘法误差（如 0.29*100 在二进制下可能是 28.999999999999996）
+  double _truncateTo2(double qty) => (qty * 100 + 1e-9).truncateToDouble() / 100;
+
+  /// 报工单位转换后的数量格式化：两位小数截断（不四舍五入），整数不显示小数
+  String _formatQtyTruncated(double qty) {
+    final truncated = _truncateTo2(qty);
+    if (truncated == truncated.truncateToDouble()) return '${truncated.toInt()}';
+    String s = truncated.toStringAsFixed(2);
+    if (s.endsWith('0')) s = s.substring(0, s.length - 1);
+    return s;
   }
 
   String _formatDateTime(DateTime? dt) => dt == null

@@ -345,10 +345,10 @@ class _ExtraWorkDetailPageState extends State<ExtraWorkDetailPage> {
     // 自动计算实际工时（提报时间 - 领取时间，含午休扣除）
     final workHours = _calcWorkHours();
 
-    // 完成数量为选填字段，留空默认按0提交，保留两位小数
+    // 完成数量为选填字段，留空默认按0提交，两位小数截断，不四舍五入
     final inputCompletedQty =
         double.tryParse(_completedQtyController.text) ?? 0;
-    final completedQty = double.parse(inputCompletedQty.toStringAsFixed(2));
+    final completedQty = (inputCompletedQty * 100 + 1e-9).truncateToDouble() / 100;
 
     setState(() => _isSubmitting = true);
     final result = await _apiService.submitReport(
