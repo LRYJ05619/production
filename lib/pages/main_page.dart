@@ -226,8 +226,8 @@ class _MainPageState extends State<MainPage> {
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '任务清单'),
-          BottomNavigationBarItem(icon: Icon(Icons.assignment), label: '生产任务'),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '槽道任务'),
+          BottomNavigationBarItem(icon: Icon(Icons.assignment), label: '锚栓/C型钢'),
           BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: '其他任务'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: '历史记录'),
         ],
@@ -375,7 +375,12 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
-  int _currentPage = 1;
+
+  // 锚栓、C型钢两个product_type分别独立分页，任一还有更多即视为整体hasMore
+  int _anchorPage = 1;
+  int _csteelPage = 1;
+  bool _anchorHasMore = true;
+  bool _csteelHasMore = true;
 
   bool get _isLeader => widget.userInfo.userRole == UserRole.leader;
 
@@ -440,31 +445,52 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
     return workerNames;
   }
 
+  /// 首次加载/刷新：锚栓、C型钢各取第1页并合并
+  Future<PaginatedResponse<ApiTaskData>> _fetchAnchor(int page) => _apiService.getTaskList(
+    page: page, pageSize: 50, productType: 'anchor', filter: _buildFilter(),
+  );
+
+  Future<PaginatedResponse<ApiTaskData>> _fetchCsteel(int page) => _apiService.getTaskList(
+    page: page, pageSize: 50, productType: 'csteel', filter: _buildFilter(),
+  );
+
   Future<void> _loadTasks() async {
     setState(() {
       _isLoading = true;
-      _currentPage = 1;
+      _anchorPage = 1;
+      _csteelPage = 1;
+      _anchorHasMore = true;
+      _csteelHasMore = true;
     });
 
-    final response = await _apiService.getTaskList(page: 1, pageSize: 50, filter: _buildFilter());
+    final results = await Future.wait([_fetchAnchor(1), _fetchCsteel(1)]);
+    final anchorResp = results[0];
+    final csteelResp = results[1];
 
     setState(() {
-      _tasks = response.data;
+      _tasks = [...anchorResp.data, ...csteelResp.data];
       _groupTasksByWorker();
-      _hasMore = response.hasMore;
+      _anchorHasMore = anchorResp.hasMore;
+      _csteelHasMore = csteelResp.hasMore;
+      _hasMore = _anchorHasMore || _csteelHasMore;
       _isLoading = false;
     });
   }
 
   Future<void> _refreshTasks() async {
-    _currentPage = 1;
-    final response = await _apiService.getTaskList(page: 1, pageSize: 50, filter: _buildFilter());
+    final results = await Future.wait([_fetchAnchor(1), _fetchCsteel(1)]);
+    final anchorResp = results[0];
+    final csteelResp = results[1];
 
     if (mounted) {
       setState(() {
-        _tasks = response.data;
+        _anchorPage = 1;
+        _csteelPage = 1;
+        _tasks = [...anchorResp.data, ...csteelResp.data];
         _groupTasksByWorker();
-        _hasMore = response.hasMore;
+        _anchorHasMore = anchorResp.hasMore;
+        _csteelHasMore = csteelResp.hasMore;
+        _hasMore = _anchorHasMore || _csteelHasMore;
       });
     }
   }
@@ -474,13 +500,24 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
 
     setState(() => _isLoadingMore = true);
 
-    final response = await _apiService.getTaskList(page: _currentPage + 1, pageSize: 50, filter: _buildFilter());
+    final anchorFuture = _anchorHasMore ? _fetchAnchor(_anchorPage + 1) : null;
+    final csteelFuture = _csteelHasMore ? _fetchCsteel(_csteelPage + 1) : null;
+    final anchorResp = anchorFuture != null ? await anchorFuture : null;
+    final csteelResp = csteelFuture != null ? await csteelFuture : null;
 
     setState(() {
-      _tasks.addAll(response.data);
+      if (anchorResp != null) {
+        _tasks.addAll(anchorResp.data);
+        _anchorPage++;
+        _anchorHasMore = anchorResp.hasMore;
+      }
+      if (csteelResp != null) {
+        _tasks.addAll(csteelResp.data);
+        _csteelPage++;
+        _csteelHasMore = csteelResp.hasMore;
+      }
       _groupTasksByWorker();
-      _currentPage++;
-      _hasMore = response.hasMore;
+      _hasMore = _anchorHasMore || _csteelHasMore;
       _isLoadingMore = false;
     });
   }
@@ -509,7 +546,7 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
       items.add(_buildGroupHeader(workerName, tasks.length, isMe: isMe));
 
       for (final task in tasks) {
-        items.add(TaskCard(task: task, onTap: () => _navigateToDetail(task)));
+        items.add(_buildTaskCard(task));
       }
     }
 
@@ -522,10 +559,367 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
       child: ListView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
         children: items,
       ),
     );
+  }
+
+  /// 按角色和任务状态决定卡片上可用的内联操作
+  /// 工人/质检：卡片上直接领取/报工/质检，不再跳转详情页
+  /// 班长：保留点击进入详情
+  Widget _buildTaskCard(ApiTaskData task) {
+    final UserRole role = widget.userInfo.userRole;
+    final bool isMine = task.workerId == widget.userInfo.id;
+    // 班长对自己的任务同样可以走工人流程
+    final bool canActAsWorker =
+        role == UserRole.worker || (role == UserRole.leader && isMine);
+
+    return TaskCard(
+      task: task,
+      onTap: role == UserRole.leader ? () => _navigateToDetail(task) : null,
+      onClaim: canActAsWorker && task.status == ApiTaskStatus.assigned
+          ? () => _claimTask(task)
+          : null,
+      onReport: canActAsWorker && _isReportable(task.status)
+          ? () => _showReportDialog(task)
+          : null,
+      onQc: role == UserRole.inspector && task.status == ApiTaskStatus.pendingQc
+          ? () => _showQcDialog(task)
+          : null,
+      onApprove: role == UserRole.leader && task.status.canLeaderOperate
+          ? () => _showApproveDialog(task)
+          : null,
+    );
+  }
+
+  /// 可报工状态：已领取、班长发回、质检发回
+  bool _isReportable(ApiTaskStatus status) =>
+      status == ApiTaskStatus.claimed ||
+          status == ApiTaskStatus.leaderReject ||
+          status == ApiTaskStatus.qcReject;
+
+  /// 自动计算实际工时（提报时间 - 领取时间，12点前领取且13点后报工扣除1小时午休）
+  double _calcWorkHours(DateTime? claimTime) {
+    if (claimTime == null) return 0;
+    final now = DateTime.now();
+    double hours = now.difference(claimTime).inMinutes / 60.0;
+    if (claimTime.hour < 12 && now.hour >= 13) hours -= 1.0;
+    if (hours < 0) hours = 0;
+    return double.parse(hours.toStringAsFixed(1));
+  }
+
+  /// 两位小数截断，不四舍五入
+  double _truncate2(double qty) => (qty * 100 + 1e-9).truncateToDouble() / 100;
+
+  Future<void> _claimTask(ApiTaskData task) async {
+    final result = await _apiService.claimTask(task.id);
+    if (!mounted) return;
+    if (result.success) {
+      AppToast.success(context, '领取成功');
+    } else {
+      AppToast.error(context, result.errorMessage ?? '领取失败');
+    }
+    _refreshTasks();
+  }
+
+  /// 报工：只填完成数量（与槽道保持一致，废品由质检填报）
+  void _showReportDialog(ApiTaskData task) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('报工', style: TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(task.specModel.isNotEmpty ? task.specModel : task.productName,
+                style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+            Text('计划数量: ${task.assignedQty} ${task.unit}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: '完成数量',
+                suffixText: task.unit,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () {
+              final qty = double.tryParse(controller.text) ?? 0;
+              if (qty <= 0) {
+                AppToast.error(context, '请输入完成数量');
+                return;
+              }
+              Navigator.pop(ctx);
+              _submitReport(task, qty);
+            },
+            child: const Text('提交'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitReport(ApiTaskData task, double completedQty) async {
+    final double qty = _truncate2(completedQty);
+    final result = await _apiService.submitReport(
+      taskId: task.id,
+      completedQty: qty,
+      // 工人只报完成数量：废品由质检填报、合格数量由班长最终决定，
+      // 接口必填的其余数量一律传0
+      qualifiedQty: 0,
+      workWasteQty: 0,
+      materialWasteQty: 0,
+      repairQty: 0,
+      lossQty: 0,
+      // 工时由领取时间自动算出，不需要工人填写
+      workHours: _calcWorkHours(task.claimTime),
+    );
+    if (!mounted) return;
+    if (result.success) {
+      AppToast.success(context, '报工成功');
+    } else {
+      AppToast.error(context, result.errorMessage ?? '报工失败');
+    }
+    _refreshTasks();
+  }
+
+  /// 质检：只填工废/料废数量，合格数量由班长审批时最终决定
+  /// 不提供驳回（接口的 pass 参数保留，这里固定传 true）
+  void _showQcDialog(ApiTaskData task) {
+    final workWasteCtrl = TextEditingController();
+    final materialWasteCtrl = TextEditingController();
+    final opinionCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('质检', style: TextStyle(fontSize: 16)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(task.specModel.isNotEmpty ? task.specModel : task.productName,
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+              Text('工人提报完成数量: ${task.completedQty} ${task.unit}',
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: workWasteCtrl,
+                      keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: '工废数量',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: materialWasteCtrl,
+                      keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: '料废数量',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: opinionCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: '质检意见',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: buildDialogActionRow([
+          buildDialogButton(
+            onPressed: () => Navigator.pop(ctx),
+            label: '取消',
+          ),
+          buildDialogButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _submitQc(task, workWasteCtrl.text, materialWasteCtrl.text,
+                  opinionCtrl.text);
+            },
+            label: '提交质检',
+            filled: true,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _submitQc(ApiTaskData task, String workWasteText,
+      String materialWasteText, String opinion) async {
+    final double workWaste = _truncate2(double.tryParse(workWasteText) ?? 0);
+    final double materialWaste =
+    _truncate2(double.tryParse(materialWasteText) ?? 0);
+
+    if (workWaste + materialWaste > task.completedQty) {
+      AppToast.error(context, '工废+料废超过完成数量，请重新填写');
+      return;
+    }
+
+    // 质检只提交废品数量，合格数量留给班长审批时决定
+    final result = await _apiService.submitQcReview(
+      taskId: task.id,
+      pass: true,
+      qcWorkWasteQty: workWaste,
+      qcMaterialWasteQty: materialWaste,
+      qcOpinion: opinion,
+    );
+    if (!mounted) return;
+    if (result.success) {
+      AppToast.success(context, '质检提交成功');
+    } else {
+      AppToast.error(context, result.errorMessage ?? '提交失败');
+    }
+    _refreshTasks();
+  }
+
+  /// 班长审批：可改写最终的合格/工废/料废数量后提交
+  /// 不提供驳回（接口的 pass 参数保留，这里固定传 true）
+  void _showApproveDialog(ApiTaskData task) {
+    final noteCtrl = TextEditingController();
+    // 预填质检结果，班长可直接改写
+    final double defaultWorkWaste = task.workWasteQty;
+    final double defaultMaterialWaste = task.materialWasteQty;
+    final double defaultQualified =
+    _truncate2(task.completedQty - defaultWorkWaste - defaultMaterialWaste);
+
+    final qualifiedCtrl =
+    TextEditingController(text: _fmtQty(defaultQualified < 0 ? 0 : defaultQualified));
+    final workWasteCtrl = TextEditingController(text: _fmtQty(defaultWorkWaste));
+    final materialWasteCtrl = TextEditingController(text: _fmtQty(defaultMaterialWaste));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('审批', style: TextStyle(fontSize: 16)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(task.specModel.isNotEmpty ? task.specModel : task.productName,
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+              Text('工人提报完成数量: ${_fmtQty(task.completedQty)} ${task.unit}',
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              // 班长可改写最终数量
+              Row(
+                children: [
+                  _buildQtyField('合格', qualifiedCtrl),
+                  const SizedBox(width: 6),
+                  _buildQtyField('工废', workWasteCtrl),
+                  const SizedBox(width: 6),
+                  _buildQtyField('料废', materialWasteCtrl),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: '审批意见',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: buildDialogActionRow([
+          buildDialogButton(
+            onPressed: () => Navigator.pop(ctx),
+            label: '取消',
+          ),
+          buildDialogButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _submitApproval(task, noteCtrl.text, qualifiedCtrl.text,
+                  workWasteCtrl.text, materialWasteCtrl.text);
+            },
+            label: '同意提报',
+            filled: true,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 数量输入框（对话框内三列并排）
+  Widget _buildQtyField(String label, TextEditingController ctrl) {
+    return Expanded(
+      child: TextField(
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          border: const OutlineInputBorder(),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  /// 去掉浮点尾数（500 而不是 500.0）
+  String _fmtQty(double v) => formatQtyNum(v).toString();
+
+  Future<void> _submitApproval(ApiTaskData task, String note, String qualifiedText,
+      String workWasteText, String materialWasteText) async {
+    final double qualified = _truncate2(double.tryParse(qualifiedText) ?? 0);
+    final double workWaste = _truncate2(double.tryParse(workWasteText) ?? 0);
+    final double materialWaste = _truncate2(double.tryParse(materialWasteText) ?? 0);
+
+    if (qualified + workWaste + materialWaste > task.completedQty) {
+      AppToast.error(context, '合格+工废+料废超过完成数量，请重新填写');
+      return;
+    }
+
+    final result = await _apiService.submitLeaderApproval(
+      taskId: task.id,
+      pass: true,
+      note: note,
+      qualifiedQty: qualified,
+      workWasteQty: workWaste,
+      materialWasteQty: materialWaste,
+    );
+    if (!mounted) return;
+    if (result.success) {
+      AppToast.success(context, '审批通过');
+    } else {
+      AppToast.error(context, result.errorMessage ?? '审批失败');
+    }
+    _refreshTasks();
   }
 
   Widget _buildGroupHeader(String workerName, int count, {bool isMe = false}) {

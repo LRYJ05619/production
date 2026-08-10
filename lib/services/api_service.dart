@@ -49,10 +49,10 @@ class ApiResult {
 
 class ApiService {
   // ==================== 服务器配置 ====================
-  static String _serverIp = '61.181.91.2';
-  static int _serverPort = 1680;
-  // static String _serverIp = '192.168.1.6';
-  // static int _serverPort = 8080;
+  // static String _serverIp = '61.181.91.2';
+  // static int _serverPort = 1680;
+  static String _serverIp = '192.168.1.6';
+  static int _serverPort = 8080;
   static String? _token;
   static UserInfo? _currentUser;
 
@@ -142,10 +142,12 @@ class ApiService {
   // ==================== 生产任务接口 ====================
 
   /// 获取任务列表
+  /// productType: 产品类型筛选（兼容别名：anchor/锚栓、channel/槽道、csteel/C型钢），不传则不筛选
   Future<PaginatedResponse<ApiTaskData>> getTaskList({
     int page = 1,
     int pageSize = 10,
     int taskType = 1,
+    String? productType,
     FilterCriteria? filter,
   }) async {
     try {
@@ -153,6 +155,7 @@ class ApiService {
         'page': page.toString(),
         'page_size': pageSize.toString(),
         'task_type': taskType.toString(),
+        if (productType != null && productType.isNotEmpty) 'product_type': productType,
       };
 
       if (filter != null) {
@@ -308,6 +311,124 @@ class ApiService {
     }
   }
 
+  /// 槽道合并批次报工（工人只填一个总完成数量）
+  /// 返回: {code: 200, message, data: {message, batch_id}}
+  Future<Map<String, dynamic>> channelBatchReport({
+    required List<int> taskIds,
+    required double totalCompletedQty,
+    String? remark,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks/channel-batch-report');
+      final response = await _client
+          .post(
+        uri,
+        headers: _headers,
+        body: jsonEncode({
+          'task_ids': taskIds,
+          'total_completed_qty': totalCompletedQty,
+          if (remark != null && remark.isNotEmpty) 'remark': remark,
+        }),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      print('槽道批次报工失败: $e');
+      return {'code': 500, 'message': '网络异常: $e', 'data': null};
+    }
+  }
+
+  /// 质检批量质检（对整批填总工废/总料废，通过或驳回）
+  Future<Map<String, dynamic>> batchInspect({
+    String? batchId,
+    List<int>? taskIds,
+    double? totalWorkWasteQty,
+    double? totalMaterialWasteQty,
+    required bool pass,
+    String? qcOpinion,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks/batch-inspect');
+      final response = await _client
+          .post(
+        uri,
+        headers: _headers,
+        body: jsonEncode({
+          if (batchId != null && batchId.isNotEmpty) 'batch_id': batchId,
+          if (taskIds != null && taskIds.isNotEmpty) 'task_ids': taskIds,
+          if (totalWorkWasteQty != null) 'total_work_waste_qty': totalWorkWasteQty,
+          if (totalMaterialWasteQty != null) 'total_material_waste_qty': totalMaterialWasteQty,
+          'pass': pass,
+          if (qcOpinion != null && qcOpinion.isNotEmpty) 'qc_opinion': qcOpinion,
+        }),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      print('批量质检失败: $e');
+      return {'code': 500, 'message': '网络异常: $e', 'data': null};
+    }
+  }
+
+  /// 班长获取待审批批次汇总与卡片明细
+  Future<BatchApprovalDetail?> getBatchApprovalDetail({
+    String? batchId,
+    List<int>? taskIds,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        if (batchId != null && batchId.isNotEmpty) 'batch_id': batchId,
+        if (taskIds != null && taskIds.isNotEmpty) 'task_ids': taskIds.join(','),
+      };
+      final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks/batch-approval-detail')
+          .replace(queryParameters: queryParams);
+      final response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        if (json['code'] == 200 && json['data'] != null) {
+          return BatchApprovalDetail.fromJson(json['data']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('获取批次审批详情失败: $e');
+      return null;
+    }
+  }
+
+  /// 班长终审拆分分配与推送金蝶
+  /// 返回: {code: 200/206, message, data: {success_count, failed_count, failed_task_ids, failed_tasks}}
+  Future<Map<String, dynamic>> leaderBatchApprove({
+    required bool pass,
+    String? note,
+    required List<LeaderBatchApproveItem> items,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl$apiPrefix/production/tasks/leader-batch-approve');
+      final response = await _client
+          .post(
+        uri,
+        headers: _headers,
+        body: jsonEncode({
+          'pass': pass,
+          if (note != null && note.isNotEmpty) 'note': note,
+          'items': items.map((e) => e.toJson()).toList(),
+        }),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      print('班长批次审批失败: $e');
+      return {'code': 500, 'message': '网络异常: $e', 'data': null};
+    }
+  }
+
   /// 质检审核（返回ApiResult）
   Future<ApiResult> submitQcReview({
     required int taskId,
@@ -343,10 +464,15 @@ class ApiService {
   }
 
   /// 班长审批（返回ApiResult）
+  /// qualifiedQty/workWasteQty/materialWasteQty 为班长决定的最终数量，
+  /// 不传则沿用工人提报和质检的结果
   Future<ApiResult> submitLeaderApproval({
     required int taskId,
     required bool pass,
     String? note,
+    double? qualifiedQty,
+    double? workWasteQty,
+    double? materialWasteQty,
   }) async {
     try {
       final uri =
@@ -358,6 +484,9 @@ class ApiService {
         body: jsonEncode({
           'pass': pass,
           if (note != null && note.isNotEmpty) 'note': note,
+          if (qualifiedQty != null) 'qualified_qty': qualifiedQty,
+          if (workWasteQty != null) 'work_waste_qty': workWasteQty,
+          if (materialWasteQty != null) 'material_waste_qty': materialWasteQty,
         }),
       )
           .timeout(const Duration(seconds: 10));

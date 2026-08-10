@@ -57,67 +57,78 @@ class _LoginPageState extends State<LoginPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Icon(Icons.people, size: 18, color: Colors.grey),
-                  SizedBox(width: 8),
-                  Text('切换账号', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ..._savedAccounts.map((account) {
-              final username = account['username'] ?? '';
-              final isCurrent = username == _usernameController.text;
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: isCurrent ? Colors.orange.shade100 : Colors.grey.shade100,
-                  child: Text(
-                    username.isNotEmpty ? username[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: isCurrent ? Colors.orange : Colors.grey[700],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                title: Text(username),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
                   children: [
-                    if (isCurrent)
-                      const Icon(Icons.check_circle, color: Colors.orange, size: 18),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
-                      onPressed: () async {
-                        await StorageService.removeAccount(username);
-                        setSheetState(() {
-                          _savedAccounts = StorageService.getSavedAccounts();
-                        });
-                        setState(() {
-                          _savedAccounts = StorageService.getSavedAccounts();
-                        });
-                        if (_savedAccounts.isEmpty && ctx.mounted) {
-                          Navigator.pop(ctx);
-                        }
-                      },
-                    ),
+                    Icon(Icons.people, size: 18, color: Colors.grey),
+                    SizedBox(width: 8),
+                    Text('切换账号', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _usernameController.text = account['username'] ?? '';
-                  _passwordController.text = account['password'] ?? '';
-                  _login();
-                },
-              );
-            }),
-            const SizedBox(height: 8),
-          ],
+              ),
+              const Divider(height: 1),
+              // 账号较多时列表内部滚动，避免撑破弹窗高度
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _savedAccounts.length,
+                  itemBuilder: (context, index) {
+                    final account = _savedAccounts[index];
+                    final username = account['username'] ?? '';
+                    final isCurrent = username == _usernameController.text;
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isCurrent ? Colors.orange.shade100 : Colors.grey.shade100,
+                        child: Text(
+                          username.isNotEmpty ? username[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            color: isCurrent ? Colors.orange : Colors.grey[700],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      title: Text(username),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isCurrent)
+                            const Icon(Icons.check_circle, color: Colors.orange, size: 18),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+                            onPressed: () async {
+                              await StorageService.removeAccount(username);
+                              setSheetState(() {
+                                _savedAccounts = StorageService.getSavedAccounts();
+                              });
+                              setState(() {
+                                _savedAccounts = StorageService.getSavedAccounts();
+                              });
+                              if (_savedAccounts.isEmpty && ctx.mounted) {
+                                Navigator.pop(ctx);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _usernameController.text = account['username'] ?? '';
+                        _passwordController.text = account['password'] ?? '';
+                        _login();
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

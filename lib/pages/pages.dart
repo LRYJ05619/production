@@ -4,3 +4,4 @@ export 'order_detail_page.dart';
 export 'order_complete_page.dart';
 export 'extra_work_detail_page.dart';
 export 'cutting_merge_page.dart';
+export 'batch_approval_page.dart';

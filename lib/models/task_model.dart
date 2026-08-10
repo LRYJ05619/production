@@ -114,6 +114,14 @@ enum ApiTaskStatus {
   bool get canLeaderOperate {
     return this == ApiTaskStatus.pendingApproval || this == ApiTaskStatus.resubmit;
   }
+
+  /// 是否已经过质检环节（质检提交后工废/料废才有意义，此时即使为0也要显示出来）
+  bool get isQcDone {
+    return this == ApiTaskStatus.pendingApproval ||
+        this == ApiTaskStatus.leaderReject ||
+        this == ApiTaskStatus.completed ||
+        this == ApiTaskStatus.resubmit;
+  }
 }
 
 // ==================== 登录响应模型 ====================
@@ -190,6 +198,8 @@ class PlanInfo {
   final DateTime? planStartTime;
   final DateTime? planEndTime;
   final double assignedQty;
+  final double assignableQty;   // 可分配数量
+  final double reportableQty;   // 可报工数量
   final double completedQty;
   final double totalWasteQty;
   final double progress;
@@ -197,6 +207,7 @@ class PlanInfo {
   final bool isFirstOper;
   final bool freeReport;
   final String remark;
+  final String connector;
   final int status;
 
   PlanInfo({
@@ -216,6 +227,8 @@ class PlanInfo {
     this.planStartTime,
     this.planEndTime,
     required this.assignedQty,
+    this.assignableQty = 0,
+    this.reportableQty = 0,
     required this.completedQty,
     required this.totalWasteQty,
     required this.progress,
@@ -223,6 +236,7 @@ class PlanInfo {
     required this.isFirstOper,
     required this.freeReport,
     required this.remark,
+    required this.connector,
     required this.status,
   });
 
@@ -244,6 +258,8 @@ class PlanInfo {
       planStartTime: parseLocalTime(json['plan_start_time']),
       planEndTime: parseLocalTime(json['plan_end_time']),
       assignedQty: (json['assigned_qty'] ?? 0).toDouble(),
+      assignableQty: (json['assignable_qty'] ?? 0).toDouble(),
+      reportableQty: (json['reportable_qty'] ?? 0).toDouble(),
       completedQty: (json['completed_qty'] ?? 0).toDouble(),
       totalWasteQty: (json['total_waste_qty'] ?? 0).toDouble(),
       progress: (json['progress'] ?? 0).toDouble(),
@@ -251,6 +267,7 @@ class PlanInfo {
       isFirstOper: json['is_first_oper'] ?? false,
       freeReport: json['free_report'] ?? false,
       remark: json['remark'] ?? '',
+      connector: json['connector'] ?? '',
       status: json['status'] ?? 0,
     );
   }
@@ -579,6 +596,7 @@ class ApiTaskData {
   final String? _workerName;
   final String? _specModel;
   final String? _remark;
+  final String? _connector;
 
   ApiTaskData({
     required this.id,
@@ -638,6 +656,7 @@ class ApiTaskData {
     String? workerName,
     String? specModel,
     String? remark,
+    String? connector,
   }) : _orderNo = orderNo,
         _productCode = productCode,
         _productName = productName,
@@ -646,7 +665,8 @@ class ApiTaskData {
         _planQty = planQty,
         _workerName = workerName,
         _specModel = specModel,
-        _remark = remark;
+        _remark = remark,
+        _connector = connector;
 
   factory ApiTaskData.fromJson(Map<String, dynamic> json) {
     return ApiTaskData(
@@ -712,16 +732,18 @@ class ApiTaskData {
       workerId: json['worker_id'] ?? 0,
       worker: null,
       teamId: 0,
-      planHours: 0,
-      actualHours: 0,
+      // 以下字段列表接口可能返回也可能不返回，缺失时回退为0/空（卡片会自动隐藏空字段）
+      planHours: (json['plan_hours'] ?? 0).toDouble(),
+      actualHours: (json['actual_hours'] ?? 0).toDouble(),
       workSummary: '',
-      completedQty: 0,
-      qualifiedQty: 0,
-      workWasteQty: 0,
-      materialWasteQty: 0,
+      planFinishTime: parseLocalTime(json['plan_finish_time']),
+      completedQty: (json['completed_qty'] ?? 0).toDouble(),
+      qualifiedQty: (json['qualified_qty'] ?? 0).toDouble(),
+      workWasteQty: (json['work_waste_qty'] ?? 0).toDouble(),
+      materialWasteQty: (json['material_waste_qty'] ?? 0).toDouble(),
       repairQty: 0,
       lossQty: 0,
-      workHours: 0,
+      workHours: (json['work_hours'] ?? 0).toDouble(),
       qcQualifiedQty: 0,
       qcWasteQty: 0,
       qcOpinion: '',
@@ -733,8 +755,8 @@ class ApiTaskData {
       errorMsg: '',
       isSettled: false,
       freeReport: false,
-      workType: '',
-      timeType: '',
+      workType: json['work_type'] ?? '',
+      timeType: json['time_type'] ?? '',
       deviceName: '',
       quota8h: 0,
       createdAt: parseLocalTime(json['created_at']) ?? DateTime.now(),
@@ -750,6 +772,7 @@ class ApiTaskData {
       specModel: json['spec_model'],
       claimTime: parseLocalTime(json['claim_time']),
       remark: json['remark'],
+      connector: json['connector'],
     );
   }
 
@@ -762,6 +785,11 @@ class ApiTaskData {
   String get specModel => _specModel ?? plan?.specModel ?? '';
   String get unit => plan?.unit ?? '个';
   String get remark => _remark ?? plan?.remark ?? '';
+  String get connector => _connector ?? plan?.connector ?? '';
+
+  /// 可分配数量 / 可报工数量（来自工序计划，仅任务详情接口返回）
+  double get assignableQty => plan?.assignableQty ?? 0;
+  double get reportableQty => plan?.reportableQty ?? 0;
 
   String get workerName => _workerName ?? worker?.realName ?? '';
   String get producerName => producer?.realName ?? '';
@@ -854,6 +882,177 @@ class FilterCriteria {
       startTime: clearStartTime ? null : (startTime ?? this.startTime),
       endTime: clearEndTime ? null : (endTime ?? this.endTime),
       teamId: clearTeamId ? null : (teamId ?? this.teamId),
+    );
+  }
+}
+
+// ==================== 数量单位换算 ====================
+
+/// 数量显示格式化：两位小数截断（不四舍五入），整数不带小数点
+/// 只在最终展示时调用一次，中间的换算/累加一律用未取整的 double
+num formatQtyNum(double v) {
+  final double sign = v < 0 ? -1 : 1;
+  final double t = (v.abs() * 100 + 1e-9).truncateToDouble() / 100 * sign;
+  return t == t.roundToDouble() ? t.toInt() : t;
+}
+
+/// 两位小数截断，不四舍五入（提交接口前统一处理）
+double truncateQty2(double qty) => (qty * 100 + 1e-9).truncateToDouble() / 100;
+
+/// 槽道数量单位换算：API单位（外置=组、预埋=米） ↔ 显示单位（断料=根、其他=米）
+///
+/// 换算依赖 外置/预埋、是否断料、根系数、单根长度 四个属性，
+/// 这些在合并分组内是一致的（外置/预埋已参与合并key）。
+/// 统一放在这里，避免展示端和提交端各写一份导致两个方向不对称。
+class QtyConverter {
+  final bool isCutting;
+  final bool isWaizhi;
+  final int rootMultiplier; // 三根=3，双根=2，其他=1
+  final double lengthMeters;
+
+  const QtyConverter({
+    required this.isCutting,
+    required this.isWaizhi,
+    this.rootMultiplier = 1,
+    this.lengthMeters = 0,
+  });
+
+  /// 不做任何换算（锚栓/C型钢等非槽道产品）
+  static const QtyConverter identity =
+  QtyConverter(isCutting: false, isWaizhi: false);
+
+  /// API单位 → 显示单位（刻意不取整：合计多个任务时必须先累加再统一格式化，
+  /// 否则每单的小数份额会被逐个进位，把总数放大）
+  double toDisplay(double apiQty) {
+    if (isWaizhi && isCutting) {
+      return apiQty * rootMultiplier;
+    }
+    if (isWaizhi && !isCutting && lengthMeters > 0) {
+      return apiQty * rootMultiplier * lengthMeters;
+    }
+    if (!isWaizhi && isCutting && lengthMeters > 0) {
+      return apiQty / lengthMeters;
+    }
+    return apiQty;
+  }
+
+  /// 显示单位 → API单位（与 toDisplay 严格互逆）
+  double toApi(double displayQty) {
+    if (isWaizhi && isCutting && rootMultiplier > 0) {
+      return displayQty / rootMultiplier;
+    }
+    if (isWaizhi && !isCutting && rootMultiplier > 0 && lengthMeters > 0) {
+      return displayQty / rootMultiplier / lengthMeters;
+    }
+    if (!isWaizhi && isCutting && lengthMeters > 0) {
+      return displayQty * lengthMeters;
+    }
+    return displayQty;
+  }
+
+  /// API单位 → 显示单位并格式化（单个数值展示用）
+  num toDisplayNum(double apiQty) => formatQtyNum(toDisplay(apiQty));
+}
+
+// ==================== 卡片信息字段 ====================
+
+/// 卡片/审批页上的一个"标签: 值"信息项
+/// fullWidth=true 的字段独占一行（如"计划完成时间"这类内容较长、半栏放不下的）
+class InfoEntry {
+  final String label;
+  final String value;
+  final bool fullWidth;
+
+  const InfoEntry(this.label, this.value, {this.fullWidth = false});
+}
+
+// ==================== 槽道批次审批模型 ====================
+
+/// 班长批次分配详情（/production/tasks/batch-approval-detail 返回）
+///
+/// tasks[] 的元素就是标准的任务对象（订单号等字段在其 plan 子对象里），
+/// 因此直接复用 ApiTaskData.fromJson 解析，不再单独维护一套字段映射。
+class BatchApprovalDetail {
+  final String batchId;
+  final double totalCompletedQty;
+  final double totalWorkWasteQty;
+  final double totalMaterialWasteQty;
+  final double totalQualifiedQty;
+  final List<ApiTaskData> tasks;
+
+  BatchApprovalDetail({
+    required this.batchId,
+    required this.totalCompletedQty,
+    required this.totalWorkWasteQty,
+    required this.totalMaterialWasteQty,
+    required this.totalQualifiedQty,
+    required this.tasks,
+  });
+
+  factory BatchApprovalDetail.fromJson(Map<String, dynamic> json) {
+    final tasks = (json['tasks'] as List? ?? [])
+        .map((e) => ApiTaskData.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    /// 汇总字段优先用接口返回值；接口未返回（为0）时按 tasks 累加兜底，
+    /// 避免因后端汇总字段缺失导致班长看到全 0 而无法分配
+    double total(String key, double Function(ApiTaskData) pick) {
+      final double v = (json[key] ?? 0).toDouble();
+      if (v != 0) return v;
+      return tasks.fold(0.0, (s, t) => s + pick(t));
+    }
+
+    return BatchApprovalDetail(
+      batchId: json['batch_id'] ?? '',
+      totalCompletedQty: total('total_completed_qty', (t) => t.completedQty),
+      totalWorkWasteQty: total('total_work_waste_qty', (t) => t.workWasteQty),
+      totalMaterialWasteQty:
+      total('total_material_waste_qty', (t) => t.materialWasteQty),
+      totalQualifiedQty: total('total_qualified_qty', (t) => t.qualifiedQty),
+      tasks: tasks,
+    );
+  }
+}
+
+/// 班长提交 /production/tasks/leader-batch-approve 时，单个任务的分配数量
+class LeaderBatchApproveItem {
+  final int taskId;
+  final double qualifiedQty;
+  final double workWasteQty;
+  final double materialWasteQty;
+
+  LeaderBatchApproveItem({
+    required this.taskId,
+    required this.qualifiedQty,
+    required this.workWasteQty,
+    required this.materialWasteQty,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'task_id': taskId,
+    'qualified_qty': qualifiedQty,
+    'work_waste_qty': workWasteQty,
+    'material_waste_qty': materialWasteQty,
+  };
+}
+
+/// leader-batch-approve 返回体里，同步金蝶失败的任务（code=206 部分失败时）
+class LeaderBatchApproveFailedTask {
+  final int taskId;
+  final String taskNo;
+  final String reason;
+
+  LeaderBatchApproveFailedTask({
+    required this.taskId,
+    required this.taskNo,
+    required this.reason,
+  });
+
+  factory LeaderBatchApproveFailedTask.fromJson(Map<String, dynamic> json) {
+    return LeaderBatchApproveFailedTask(
+      taskId: json['task_id'] ?? 0,
+      taskNo: json['task_no'] ?? '',
+      reason: json['reason'] ?? '',
     );
   }
 }

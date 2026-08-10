@@ -36,7 +36,9 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   ApiTaskData get _task => widget.task;
 
   /// 判断当前用户是否可以操作（显示底部按钮）
+  /// 槽道任务的操作全部移到任务卡片和批次分配页，详情页只读
   bool get _canOperate {
+    if (_isCaoDao) return false;
     return _task.canOperate(widget.userInfo);
   }
 
@@ -293,8 +295,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         _buildInfoRow('规 格 型 号:', _task.specModel),
         _buildInfoRow('分 配 时 间:', _formatDateTime(_task.createdAt)),
         _buildInfoRow('工          序:', _task.processName),
-        if (_task.remark.isNotEmpty)
-          _buildInfoRow('连 接 物 体:', _task.remark),
+        if (_task.connector.isNotEmpty)
+          _buildInfoRow('连 接 物 体:', _task.connector),
         _buildInfoRow('计 划 数 量:',
             '${_formatQty(displayAssignedQty)} $_displayUnit'),
         _buildInfoRow('计 划 工 时:', '${_task.planHours}小时'),
@@ -494,6 +496,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   }
 
   Widget _buildButtons() {
+    // 槽道任务的领取/报工/质检/分配都在任务卡片和批次分配页完成，
+    // 详情页仅作查看，不再显示提报和返工按钮
+    if (_isCaoDao) return const SizedBox.shrink();
+
     if (_role == UserRole.worker) {
       if (_task.status == ApiTaskStatus.assigned) {
         return _buildSingleButton('领取任务', Colors.blue, _handleClaim);
