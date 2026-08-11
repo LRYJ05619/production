@@ -8,7 +8,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
-const String kAppVersion = 'v0.9.33';
+const String kAppVersion = 'v1.0.1';
 
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
@@ -656,7 +656,7 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
           ElevatedButton(
             onPressed: () {
               final qty = double.tryParse(controller.text) ?? 0;
-              if (qty <= 0) {
+              if (qty < 0) {
                 AppToast.error(context, '请输入完成数量');
                 return;
               }

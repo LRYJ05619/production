@@ -610,11 +610,6 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final inputRepair = double.tryParse(_repairQtyController.text) ?? 0;
     final inputLoss = double.tryParse(_lossQtyController.text) ?? 0;
 
-    if (inputQualified == 0) {
-      _showError('完成数量不能为0');
-      return;
-    }
-
     // 自动计算实际工时（提报时间 - 开始时间）
     final workHours = _calcWorkHours();
 

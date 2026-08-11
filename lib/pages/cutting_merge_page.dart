@@ -1274,7 +1274,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
   }
 
 
-  /// 班长展开后的订单明细行：生产订单单号 + 订单数量 + 工人提报数 + 状态，点击进入任务详情
+  /// 班长展开后的订单明细行：具体型号 + 订单数量 + 工人提报数 + 状态，点击进入任务详情
   Widget _buildTaskItem(ProcessTaskItem task, ProcessType process, bool isCutting) {
     final String displayUnit = process.getDisplayUnit(isCutting);
     final num orderQty = task.getDisplayQty(isCutting);
@@ -1298,19 +1298,18 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 第一行：生产订单单号 + 状态标签
+              // 第一行：具体型号 + 状态标签
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Text(
-                      task.orderNo.isNotEmpty ? task.orderNo : task.taskNo,
+                      task.erpModel.isNotEmpty ? task.erpModel : task.erpName,
                       style: TextStyle(
                           fontSize: 12,
                           height: 1.2,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey[800]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -1418,7 +1417,7 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
           ElevatedButton(
             onPressed: () {
               final double qty = double.tryParse(controller.text) ?? 0;
-              if (qty <= 0) {
+              if (qty < 0) {
                 AppToast.error(context, '请输入完成数量');
                 return;
               }
