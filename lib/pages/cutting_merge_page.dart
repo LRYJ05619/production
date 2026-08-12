@@ -301,6 +301,28 @@ class ProcessMergeData {
     }
     return latest;
   }
+
+  /// 领取时间（组内任务一次性批量领取，取最晚的一个）
+  DateTime? get claimTime {
+    DateTime? latest;
+    for (var t in tasks) {
+      if (t.claimTime != null && (latest == null || t.claimTime!.isAfter(latest))) {
+        latest = t.claimTime;
+      }
+    }
+    return latest;
+  }
+
+  /// 报工时间（组内任务一次性批量报工，取最晚的一个）
+  DateTime? get reportTime {
+    DateTime? latest;
+    for (var t in tasks) {
+      if (t.reportTime != null && (latest == null || t.reportTime!.isAfter(latest))) {
+        latest = t.reportTime;
+      }
+    }
+    return latest;
+  }
 }
 
 /// 任务明细项
@@ -319,6 +341,7 @@ class ProcessTaskItem {
   final double length;        // mm
   final ApiTaskStatus status;
   final DateTime? claimTime;
+  final DateTime? reportTime;
   final String workerName;
   final double planHours;
   final String workType;
@@ -343,6 +366,7 @@ class ProcessTaskItem {
     required this.length,
     required this.status,
     this.claimTime,
+    this.reportTime,
     this.workerName = '',
     this.planHours = 0,
     this.workType = '',
@@ -421,6 +445,7 @@ class ProcessTaskItem {
       length: parsedInfo['length'] ?? 0.0,
       status: task.status,
       claimTime: task.claimTime,
+      reportTime: task.reportTime,
       workerName: task.workerName,
       planHours: task.planHours,
       workType: task.workType,
@@ -1209,6 +1234,13 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     if (showWaste || data.materialWastePieces > 0) {
       entries.add(InfoEntry('料废数量', '${data.materialWastePieces} $unit'));
     }
+    // 领取/报工时间随流程递进出现，标签长、值也长，半栏放不下，独占一行
+    if (data.claimTime != null) {
+      entries.add(InfoEntry('领取时间', _formatDateTime(data.claimTime!), fullWidth: true));
+    }
+    if (data.reportTime != null) {
+      entries.add(InfoEntry('报工时间', _formatDateTime(data.reportTime!), fullWidth: true));
+    }
     // 计划完成时间标签长、值也长，半栏放不下，独占一行且排在所有成对字段之后
     entries.add(InfoEntry(
       '计划完成时间',
@@ -1270,6 +1302,9 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
 
   String _formatDate(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  String _formatDateTime(DateTime dt) =>
+      '${_formatDate(dt)} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
   Widget _buildTag(String text, Color color) {
     if (text.isEmpty) return const SizedBox.shrink();

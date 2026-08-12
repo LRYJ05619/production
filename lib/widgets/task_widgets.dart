@@ -342,6 +342,13 @@ class TaskCard extends StatelessWidget {
     if (showWaste || task.materialWasteQty > 0) {
       entries.add(InfoEntry('料废数量', '${_fmt(task.materialWasteQty)} $unit'));
     }
+    // 领取/报工时间随流程递进出现，标签长、值也长，半栏放不下，独占一行
+    if (task.claimTime != null) {
+      entries.add(InfoEntry('领取时间', _formatDateTime(task.claimTime!), fullWidth: true));
+    }
+    if (task.reportTime != null) {
+      entries.add(InfoEntry('报工时间', _formatDateTime(task.reportTime!), fullWidth: true));
+    }
     // 计划完成时间标签长、值也长，半栏放不下，独占一行且排在所有成对字段之后
     entries.add(InfoEntry(
       '计划完成时间',
@@ -435,6 +442,9 @@ class TaskCard extends StatelessWidget {
 
   String _formatDate(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  String _formatDateTime(DateTime dt) =>
+      '${_formatDate(dt)} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
 // ==================== 计划外工作卡片 ====================
