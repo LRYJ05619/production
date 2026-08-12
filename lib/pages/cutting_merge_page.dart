@@ -436,10 +436,12 @@ class ProcessTaskItem {
 /// 工序合并视图（任务清单）——班长可见全组、自己的置顶
 class ProcessMergeView extends StatefulWidget {
   final UserInfo userInfo;
+  final FilterCriteria filter;
 
   const ProcessMergeView({
     super.key,
     required this.userInfo,
+    required this.filter,
   });
 
   @override
@@ -465,6 +467,14 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     _loadData();
   }
 
+  @override
+  void didUpdateWidget(ProcessMergeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filter != widget.filter) {
+      _loadData();
+    }
+  }
+
   void refreshData() {
     _loadData();
   }
@@ -481,9 +491,9 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
       // 日期筛选由api_service默认处理（三天内）
       final FilterCriteria filter;
       if (_isLeader) {
-        filter = FilterCriteria();
+        filter = widget.filter;
       } else {
-        filter = FilterCriteria(workerId: widget.userInfo.id);
+        filter = widget.filter.copyWith(workerId: widget.userInfo.id);
       }
 
       final response = await _apiService.getTaskList(
@@ -1627,7 +1637,7 @@ class CuttingMergePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('槽道任务')),
-      body: ProcessMergeView(userInfo: userInfo),
+      body: ProcessMergeView(userInfo: userInfo, filter: FilterCriteria()),
     );
   }
 }

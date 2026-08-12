@@ -24,7 +24,8 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _selectedIndex = 0;
-  // 生产任务和历史记录使用独立筛选
+  // 槽道任务、生产任务和历史记录使用独立筛选
+  FilterCriteria _channelFilter = FilterCriteria();
   FilterCriteria _taskFilter = FilterCriteria();
   FilterCriteria _historyFilter = FilterCriteria();
   Timer? _refreshTimer;
@@ -68,6 +69,7 @@ class _MainPageState extends State<MainPage> {
 
   /// 获取当前页签对应的筛选
   FilterCriteria get _currentFilter {
+    if (_selectedIndex == 0) return _channelFilter;
     if (_selectedIndex == 1) return _taskFilter;
     if (_selectedIndex == 3) return _historyFilter;
     return FilterCriteria();
@@ -75,7 +77,9 @@ class _MainPageState extends State<MainPage> {
 
   void _onFilterChanged(FilterCriteria filter) {
     setState(() {
-      if (_selectedIndex == 1) {
+      if (_selectedIndex == 0) {
+        _channelFilter = filter;
+      } else if (_selectedIndex == 1) {
         _taskFilter = filter;
       } else if (_selectedIndex == 3) {
         _historyFilter = filter;
@@ -85,7 +89,9 @@ class _MainPageState extends State<MainPage> {
 
   void _clearCurrentFilter() {
     setState(() {
-      if (_selectedIndex == 1) {
+      if (_selectedIndex == 0) {
+        _channelFilter = FilterCriteria();
+      } else if (_selectedIndex == 1) {
         _taskFilter = FilterCriteria();
       } else if (_selectedIndex == 3) {
         _historyFilter = FilterCriteria();
@@ -180,14 +186,14 @@ class _MainPageState extends State<MainPage> {
           ],
         ),
         actions: [
-          if (_selectedIndex == 1 || _selectedIndex == 3)
+          if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 3)
             FilterButton(hasFilter: _currentFilter.hasFilter, onPressed: _showFilterDialog),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: '退出登录'),
         ],
       ),
       body: Column(
         children: [
-          if (_currentFilter.hasFilter && (_selectedIndex == 1 || _selectedIndex == 3))
+          if (_currentFilter.hasFilter && (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 3))
             ActiveFiltersBar(
               filter: _currentFilter,
               onClear: _clearCurrentFilter,
@@ -199,6 +205,7 @@ class _MainPageState extends State<MainPage> {
                 ProcessMergeView(
                   key: _processMergeKey,
                   userInfo: widget.userInfo,
+                  filter: _channelFilter,
                 ),
                 TaskListView(
                   key: _taskListKey,
