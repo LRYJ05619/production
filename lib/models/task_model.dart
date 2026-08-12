@@ -771,6 +771,7 @@ class ApiTaskData {
       workerName: json['worker_name'],
       specModel: json['spec_model'],
       claimTime: parseLocalTime(json['claim_time']),
+      reportTime: parseLocalTime(json['report_time']),
       remark: json['remark'],
       connector: json['connector'],
     );

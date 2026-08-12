@@ -349,6 +349,9 @@ class TaskCard extends StatelessWidget {
     if (task.reportTime != null) {
       entries.add(InfoEntry('报工时间', _formatDateTime(task.reportTime!), fullWidth: true));
     }
+    if (task.reportTime != null) {
+      entries.add(InfoEntry('实际工时', '${task.workHours}h', fullWidth: true));
+    }
     // 计划完成时间标签长、值也长，半栏放不下，独占一行且排在所有成对字段之后
     entries.add(InfoEntry(
       '计划完成时间',

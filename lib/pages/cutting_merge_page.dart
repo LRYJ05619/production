@@ -284,6 +284,15 @@ class ProcessMergeData {
     return double.parse(total.toStringAsFixed(1));
   }
 
+  /// 实际工时合计（工人报工时写入）
+  double get totalWorkHours {
+    double total = 0;
+    for (var t in tasks) {
+      total += t.workHours;
+    }
+    return double.parse(total.toStringAsFixed(1));
+  }
+
   /// 计工方式（同组任务通常一致，取第一个）
   String get workType => tasks.isNotEmpty ? tasks.first.workType : '';
 
@@ -344,6 +353,7 @@ class ProcessTaskItem {
   final DateTime? reportTime;
   final String workerName;
   final double planHours;
+  final double workHours;
   final String workType;
   final String timeType;
   final DateTime? planFinishTime;
@@ -369,6 +379,7 @@ class ProcessTaskItem {
     this.reportTime,
     this.workerName = '',
     this.planHours = 0,
+    this.workHours = 0,
     this.workType = '',
     this.timeType = '',
     this.planFinishTime,
@@ -448,6 +459,7 @@ class ProcessTaskItem {
       reportTime: task.reportTime,
       workerName: task.workerName,
       planHours: task.planHours,
+      workHours: task.workHours,
       workType: task.workType,
       timeType: task.timeType,
       completedQty: task.completedQty,
@@ -1240,6 +1252,9 @@ class ProcessMergeViewState extends State<ProcessMergeView> {
     }
     if (data.reportTime != null) {
       entries.add(InfoEntry('报工时间', _formatDateTime(data.reportTime!), fullWidth: true));
+    }
+    if (data.reportTime != null) {
+      entries.add(InfoEntry('实际工时', '${data.totalWorkHours}h', fullWidth: true));
     }
     // 计划完成时间标签长、值也长，半栏放不下，独占一行且排在所有成对字段之后
     entries.add(InfoEntry(
