@@ -130,16 +130,6 @@ class _BatchApprovalPageState extends State<BatchApprovalPage> {
     final detail = _detail;
     if (detail == null) return;
 
-    if (pass) {
-      final double allocatedTotal = _allocatedTotal;
-      final double batchTotal = _batchTotalDisplay;
-      if ((allocatedTotal - batchTotal).abs() > 0.01) {
-        AppToast.error(context,
-            '分配总量 ${_fmt(allocatedTotal)} 与批次总量 ${_fmt(batchTotal)} 不符，请重新填写');
-        return;
-      }
-    }
-
     setState(() => _isSubmitting = true);
 
     // 班长填的是显示单位（根/米），提交前换算回接口单位（米/组）
