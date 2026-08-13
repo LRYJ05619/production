@@ -8,7 +8,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/widgets.dart';
 import 'pages.dart';
 
-const String kAppVersion = 'v1.0.4';
+const String kAppVersion = 'v1.0.5';
 
 class MainPage extends StatefulWidget {
   final UserInfo userInfo;
@@ -907,10 +907,10 @@ class _TaskListViewState extends State<TaskListView> with AutomaticKeepAliveClie
     final double workWaste = _truncate2(double.tryParse(workWasteText) ?? 0);
     final double materialWaste = _truncate2(double.tryParse(materialWasteText) ?? 0);
 
-    if (qualified + workWaste + materialWaste > task.completedQty) {
-      AppToast.error(context, '合格+工废+料废超过完成数量，请重新填写');
-      return;
-    }
+    // if (qualified + workWaste + materialWaste > task.completedQty) {
+    //   AppToast.error(context, '合格+工废+料废超过完成数量，请重新填写');
+    //   return;
+    // }
 
     final result = await _apiService.submitLeaderApproval(
       taskId: task.id,
